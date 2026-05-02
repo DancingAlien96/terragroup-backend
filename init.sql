@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS planes (
 CREATE TABLE IF NOT EXISTS empresas (
   id INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(150) NOT NULL,
+  email VARCHAR(150) NULL,
+  telefono VARCHAR(20) NULL,
   rfc VARCHAR(20) NULL,
   plan_id INT NOT NULL,
   activo BOOLEAN NOT NULL DEFAULT TRUE,
@@ -40,7 +42,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   email VARCHAR(150) NOT NULL UNIQUE,
   username VARCHAR(80) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
-  rol ENUM('admin','vendedor','supervisor') NOT NULL DEFAULT 'admin',
+  rol ENUM('superadmin','admin','vendedor','supervisor') NOT NULL DEFAULT 'admin',
   activo BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -162,3 +164,19 @@ VALUES
   ('basico', 45.00, 150, 1),
   ('profesional', 90.00, 300, 3),
   ('empresarial', 150.00, 1000, 5);
+
+-- Empresa sistema para el super-administrador (no es un tenant real)
+INSERT IGNORE INTO empresas (id, nombre, email, plan_id, activo, fecha_inicio)
+VALUES (1, 'TerraGroup Sistema', 'admin@terragroup.com', 3, TRUE, CURDATE());
+
+-- Super-admin por defecto: user=superadmin / pass=Admin1234!
+-- Hash bcrypt de 'Admin1234!' con saltRounds=10
+INSERT IGNORE INTO usuarios (id, empresa_id, nombre, email, username, password, rol, activo)
+VALUES (
+  1, 1, 'Super Administrador', 'superadmin@terragroup.com', 'superadmin',
+  '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+  'superadmin', TRUE
+);
+-- IMPORTANTE: cambia la contraseña del superadmin en producción usando:
+-- UPDATE usuarios SET password = '$2a$10$<nuevo_hash>' WHERE username = 'superadmin';
+
