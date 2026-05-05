@@ -174,9 +174,25 @@ VALUES (1, 'TerraGroup Sistema', 'admin@terragroup.com', 3, TRUE, CURDATE());
 INSERT IGNORE INTO usuarios (id, empresa_id, nombre, email, username, password, rol, activo)
 VALUES (
   1, 1, 'Super Administrador', 'superadmin@terragroup.com', 'superadmin',
-  '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+  '$2a$10$JiABjXqCPn/K44N/.zY4he..HkDbMpsYhrsa.FZA9CZssqR9k.yZq',
   'superadmin', TRUE
 );
 -- IMPORTANTE: cambia la contraseña del superadmin en producción usando:
 -- UPDATE usuarios SET password = '$2a$10$<nuevo_hash>' WHERE username = 'superadmin';
+
+-- Empresas demo (3 tenants de prueba)
+INSERT IGNORE INTO empresas (id, nombre, plan_id, activo, fecha_inicio)
+VALUES
+  (2, 'Lotificaciones del Norte S.A.', 1, TRUE, CURDATE()),
+  (3, 'Terrenos Pacífico',             2, TRUE, CURDATE()),
+  (4, 'Desarrollos San Pablo',         3, TRUE, CURDATE());
+
+-- Usuarios admin de cada empresa demo
+-- Todos con contraseña: Admin123!
+-- Hash bcrypt de 'Admin123!' con saltRounds=10
+INSERT IGNORE INTO usuarios (id, empresa_id, nombre, email, username, password, rol, activo)
+VALUES
+  (2, 2, 'Carlos Norte',   'carlos@lotnorte.com',   'carlos_norte',   '$2a$10$YiC4xNvhIDACWfuuTRFxQuEWKjSOfj2My8YOikr39wX2yyH.ZWd9y', 'admin', TRUE),
+  (3, 3, 'María Pacífico', 'maria@terrenosp.com',   'maria_pacifico', '$2a$10$YiC4xNvhIDACWfuuTRFxQuEWKjSOfj2My8YOikr39wX2yyH.ZWd9y', 'admin', TRUE),
+  (4, 4, 'Roberto SP',     'roberto@dessanpablo.com','roberto_sp',     '$2a$10$YiC4xNvhIDACWfuuTRFxQuEWKjSOfj2My8YOikr39wX2yyH.ZWd9y', 'admin', TRUE);
 
