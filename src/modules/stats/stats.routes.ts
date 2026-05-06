@@ -50,7 +50,7 @@ router.get('/dashboard', async (req, res) => {
     // Recent activity: last 5 pagos with propietario name
     const [activity] = await pool.query(`
       SELECT p.id, p.monto, p.estado, p.fecha_pago,
-             pr.nombre AS propietario, l.codigo AS lote
+             pr.nombre AS propietario, l.clave AS lote
       FROM pagos p
       JOIN contratos c  ON c.id = p.contrato_id
       JOIN propietarios pr ON pr.id = c.propietario_id
@@ -116,14 +116,14 @@ router.get('/reportes', async (req, res) => {
     const [propietarios] = await pool.query(`
       SELECT
         pr.nombre,
-        l.codigo AS lote,
+        l.clave AS lote,
         COALESCE(SUM(CASE WHEN p.estado IN ('pagado','liquidado') THEN p.monto ELSE 0 END), 0) AS pagado,
         COALESCE(SUM(CASE WHEN p.estado IN ('pendiente','vencido') THEN p.monto ELSE 0 END), 0) AS saldo
       FROM propietarios pr
       JOIN contratos c ON c.propietario_id = pr.id AND c.empresa_id = ?
       JOIN lotes l     ON l.id = c.lote_id
       LEFT JOIN pagos p ON p.contrato_id = c.id
-      GROUP BY pr.id, pr.nombre, l.codigo
+      GROUP BY pr.id, pr.nombre, l.clave
       ORDER BY saldo DESC
       LIMIT 20
     `, [empresaId]) as any;

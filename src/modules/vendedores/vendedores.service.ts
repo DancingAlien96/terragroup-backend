@@ -2,16 +2,16 @@ import pool from '../../config/database.js';
 
 export interface VendedorRow {
   id: number;
+  empresa_id: number;
   nombre: string;
-  email: string;
-  username: string;
+  edad: number | null;
+  telefono: string | null;
+  email: string | null;
+  dpi: string | null;
+  direccion: string | null;
   activo: boolean;
-  lotes_asignados: number;
-  lotes_vendidos: number;
-  comision_porcentaje: number;
+  total_ventas: number;
   total_comisiones: number;
-  comisiones_pendientes: number;
-  ultima_venta: string | null;
 }
 
 export interface ComisionRow {
@@ -19,90 +19,107 @@ export interface ComisionRow {
   empresa_id: number;
   vendedor_id: number;
   vendedor_nombre: string;
-  pago_id: number;
-  propietario_nombre: string;
-  lote_clave: string;
-  monto_pago: number;
+  descripcion_lote: string;
   porcentaje: number;
-  monto: number;
-  pagada: boolean;
+  monto_comision: number;
+  fecha_venta: string;
   created_at: string;
 }
 
 export async function listVendedores(empresaId: number): Promise<VendedorRow[]> {
   const [rows] = await pool.query(
-    `SELECT
-       u.id, u.nombre, u.email, u.username, u.activo,
-       COUNT(DISTINCT c.id) AS lotes_asignados,
-       COUNT(DISTINCT CASE WHEN c.estado = 'activo' OR c.estado = 'liquidado' THEN c.lote_id END) AS lotes_vendidos,
-       COALESCE(AVG(vc.porcentaje), 0) AS comision_porcentaje,
-       COALESCE(SUM(vc.monto), 0) AS total_comisiones,
-       COALESCE(SUM(CASE WHEN vc.pagada = 0 THEN vc.monto ELSE 0 END), 0) AS comisiones_pendientes,
-       MAX(c.created_at) AS ultima_venta
-     FROM usuarios u
-     LEFT JOIN contratos c ON c.vendedor_id = u.id AND c.empresa_id = u.empresa_id
-     LEFT JOIN vendedores_comisiones vc ON vc.vendedor_id = u.id AND vc.empresa_id = u.empresa_id
-     WHERE u.empresa_id = ? AND u.rol = 'vendedor'
-     GROUP BY u.id
-     ORDER BY u.nombre ASC`,
+    `SELECT v.*,
+       COUNT(c.id) AS total_ventas,
+       COALESCE(SUM(c.monto_comision), 0) AS total_comisiones
+     FROM vendedores v
+     LEFT JOIN comisiones c ON c.vendedor_id = v.id AND c.empresa_id = v.empresa_id
+     WHERE v.empresa_id = ?
+     GROUP BY v.id
+     ORDER BY v.nombre ASC`,
     [empresaId],
   );
   return rows as VendedorRow[];
 }
 
-export async function listComisiones(empresaId: number): Promise<ComisionRow[]> {
+export async function getVendedor(id: number, empresaId: number): Promise<VendedorRow | null> {
   const [rows] = await pool.query(
-    `SELECT vc.*, u.nombre AS vendedor_nombre,
-            p.nombre AS propietario_nombre,
-            l.clave AS lote_clave,
-            pg.monto AS monto_pago
-     FROM vendedores_comisiones vc
-     JOIN usuarios u ON u.id = vc.vendedor_id
-     JOIN pagos pg ON pg.id = vc.pago_id
-     JOIN propietarios p ON p.id = pg.propietario_id
-     JOIN contratos c ON c.id = pg.contrato_id
-     JOIN lotes l ON l.id = c.lote_id
-     WHERE vc.empresa_id = ?
-     ORDER BY vc.created_at DESC`,
-    [empresaId],
+    `SELECT v.*,
+       COUNT(c.id) AS total_ventas,
+       COALESCE(SUM(c.monto_comision), 0) AS total_comisiones
+     FROM vendedores v
+     LEFT JOIN comisiones c ON c.vendedor_id = v.id AND c.empresa_id = v.empresa_id
+     WHERE v.id = ? AND v.empresa_id = ?
+     GROUP BY v.id`,
+    [id, empresaId],
+  );
+  return (rows as VendedorRow[])[0] ?? null;
+}
+
+export async function createVendedor(
+  empresaId: number,
+  data: { nombre: string; edad?: number | null; telefono?: string | null; email?: string | null; dpi?: string | null; direccion?: string | null },
+): Promise<VendedorRow> {
+  const [result] = await pool.query(
+    `INSERT INTO vendedores (empresa_id, nombre, edad, telefono, email, dpi, direccion) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [empresaId, data.nombre, data.edad ?? null, data.telefono ?? null, data.email ?? null, data.dpi ?? null, data.direccion ?? null],
+  ) as any;
+  return (await getVendedor(result.insertId, empresaId))!;
+}
+
+export async function updateVendedor(
+  id: number,
+  empresaId: number,
+  data: Partial<{ nombre: string; edad: number | null; telefono: string | null; email: string | null; dpi: string | null; direccion: string | null; activo: boolean }>,
+): Promise<VendedorRow | null> {
+  const fields: string[] = [];
+  const values: any[] = [];
+  if (data.nombre !== undefined)    { fields.push('nombre = ?');    values.push(data.nombre); }
+  if (data.edad !== undefined)      { fields.push('edad = ?');      values.push(data.edad); }
+  if (data.telefono !== undefined)  { fields.push('telefono = ?');  values.push(data.telefono); }
+  if (data.email !== undefined)     { fields.push('email = ?');     values.push(data.email); }
+  if (data.dpi !== undefined)       { fields.push('dpi = ?');       values.push(data.dpi); }
+  if (data.direccion !== undefined) { fields.push('direccion = ?'); values.push(data.direccion); }
+  if (data.activo !== undefined)    { fields.push('activo = ?');    values.push(data.activo); }
+  if (!fields.length) return getVendedor(id, empresaId);
+  await pool.query(`UPDATE vendedores SET ${fields.join(', ')} WHERE id = ? AND empresa_id = ?`, [...values, id, empresaId]);
+  return getVendedor(id, empresaId);
+}
+
+export async function deleteVendedor(id: number, empresaId: number): Promise<boolean> {
+  const [result] = await pool.query(`DELETE FROM vendedores WHERE id = ? AND empresa_id = ?`, [id, empresaId]) as any;
+  return result.affectedRows > 0;
+}
+
+export async function listComisiones(vendedorId: number, empresaId: number): Promise<ComisionRow[]> {
+  const [rows] = await pool.query(
+    `SELECT c.*, v.nombre AS vendedor_nombre
+     FROM comisiones c
+     JOIN vendedores v ON v.id = c.vendedor_id
+     WHERE c.vendedor_id = ? AND c.empresa_id = ?
+     ORDER BY c.fecha_venta DESC`,
+    [vendedorId, empresaId],
   );
   return rows as ComisionRow[];
 }
 
 export async function createComision(
   empresaId: number,
-  data: { vendedor_id: number; pago_id: number; porcentaje: number; monto: number },
+  vendedorId: number,
+  data: { descripcion_lote: string; porcentaje: number; monto_comision: number; fecha_venta: string },
 ): Promise<ComisionRow> {
   const [result] = await pool.query(
-    `INSERT INTO vendedores_comisiones (empresa_id, vendedor_id, pago_id, porcentaje, monto)
-     VALUES (?, ?, ?, ?, ?)`,
-    [empresaId, data.vendedor_id, data.pago_id, data.porcentaje, data.monto],
+    `INSERT INTO comisiones (empresa_id, vendedor_id, descripcion_lote, porcentaje, monto_comision, fecha_venta) VALUES (?, ?, ?, ?, ?, ?)`,
+    [empresaId, vendedorId, data.descripcion_lote, data.porcentaje, data.monto_comision, data.fecha_venta],
   ) as any;
   const [rows] = await pool.query(
-    `SELECT vc.*, u.nombre AS vendedor_nombre,
-            p.nombre AS propietario_nombre, l.clave AS lote_clave, pg.monto AS monto_pago
-     FROM vendedores_comisiones vc
-     JOIN usuarios u ON u.id = vc.vendedor_id
-     JOIN pagos pg ON pg.id = vc.pago_id
-     JOIN propietarios p ON p.id = pg.propietario_id
-     JOIN contratos c ON c.id = pg.contrato_id
-     JOIN lotes l ON l.id = c.lote_id
-     WHERE vc.id = ? LIMIT 1`,
+    `SELECT c.*, v.nombre AS vendedor_nombre FROM comisiones c JOIN vendedores v ON v.id = c.vendedor_id WHERE c.id = ?`,
     [result.insertId],
   );
   return (rows as ComisionRow[])[0];
 }
 
-export async function toggleComisionPagada(id: number, empresaId: number): Promise<boolean> {
-  const [rows] = await pool.query(
-    `SELECT pagada FROM vendedores_comisiones WHERE id = ? AND empresa_id = ? LIMIT 1`,
-    [id, empresaId],
-  ) as any;
-  if ((rows as any[]).length === 0) return false;
-  const current = (rows as any[])[0].pagada;
-  await pool.query(
-    `UPDATE vendedores_comisiones SET pagada = ? WHERE id = ? AND empresa_id = ?`,
-    [current ? 0 : 1, id, empresaId],
-  );
-  return true;
+export async function deleteComision(id: number, empresaId: number): Promise<boolean> {
+  const [result] = await pool.query(`DELETE FROM comisiones WHERE id = ? AND empresa_id = ?`, [id, empresaId]) as any;
+  return result.affectedRows > 0;
 }
+

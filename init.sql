@@ -101,12 +101,33 @@ CREATE TABLE IF NOT EXISTS contratos (
   CONSTRAINT fk_contratos_vendedor FOREIGN KEY (vendedor_id) REFERENCES usuarios(id) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Clientes (compradores de lotes)
+CREATE TABLE IF NOT EXISTS clientes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  empresa_id INT NOT NULL,
+  nombre_comprador VARCHAR(150) NOT NULL,
+  descripcion_lote TEXT NULL,
+  precio_neto DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  enganche DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  num_cuotas INT NOT NULL DEFAULT 0,
+  valor_cuota DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  fecha_deposito DATE NOT NULL,
+  num_transferencia VARCHAR(100) NULL,
+  entidad_bancaria ENUM('Banrural','Industrial','G&T','BAC') NULL,
+  activo BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_clientes_empresa FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Pagos registrados en el sistema
 CREATE TABLE IF NOT EXISTS pagos (
   id INT AUTO_INCREMENT PRIMARY KEY,
   empresa_id INT NOT NULL,
-  contrato_id INT NOT NULL,
-  propietario_id INT NOT NULL,
+  contrato_id INT NULL,
+  propietario_id INT NULL,
+  cliente_id INT NULL,
+  num_cuota INT NULL,
   monto DECIMAL(12,2) NOT NULL,
   fecha_pago DATE NULL,
   fecha_vencimiento DATE NOT NULL,
@@ -116,8 +137,9 @@ CREATE TABLE IF NOT EXISTS pagos (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_pagos_empresa FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT fk_pagos_contrato FOREIGN KEY (contrato_id) REFERENCES contratos(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-  CONSTRAINT fk_pagos_propietario FOREIGN KEY (propietario_id) REFERENCES propietarios(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  CONSTRAINT fk_pagos_contrato FOREIGN KEY (contrato_id) REFERENCES contratos(id) ON UPDATE CASCADE ON DELETE SET NULL,
+  CONSTRAINT fk_pagos_propietario FOREIGN KEY (propietario_id) REFERENCES propietarios(id) ON UPDATE CASCADE ON DELETE SET NULL,
+  CONSTRAINT fk_pagos_cliente FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Notificaciones internas
@@ -134,23 +156,38 @@ CREATE TABLE IF NOT EXISTS notificaciones (
   CONSTRAINT fk_notificaciones_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Comisiones de vendedores por pago
-CREATE TABLE IF NOT EXISTS vendedores_comisiones (
+-- Vendedores (standalone, independiente de usuarios)
+CREATE TABLE IF NOT EXISTS vendedores (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  empresa_id INT NOT NULL,
+  nombre VARCHAR(150) NOT NULL,
+  edad INT NULL,
+  telefono VARCHAR(20) NULL,
+  email VARCHAR(150) NULL,
+  dpi VARCHAR(30) NULL,
+  direccion VARCHAR(255) NULL,
+  activo BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_vendedores_empresa FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Comisiones de vendedores por lote vendido
+CREATE TABLE IF NOT EXISTS comisiones (
   id INT AUTO_INCREMENT PRIMARY KEY,
   empresa_id INT NOT NULL,
   vendedor_id INT NOT NULL,
-  pago_id INT NOT NULL,
+  descripcion_lote VARCHAR(255) NOT NULL,
   porcentaje DECIMAL(5,2) NOT NULL DEFAULT 0.00,
-  monto DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-  pagada BOOLEAN NOT NULL DEFAULT FALSE,
+  monto_comision DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  fecha_venta DATE NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_comisiones_empresa FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT fk_comisiones_vendedor FOREIGN KEY (vendedor_id) REFERENCES usuarios(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-  CONSTRAINT fk_comisiones_pago FOREIGN KEY (pago_id) REFERENCES pagos(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  CONSTRAINT fk_comisiones2_empresa FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT fk_comisiones2_vendedor FOREIGN KEY (vendedor_id) REFERENCES vendedores(id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Índices adicionales para búsquedas frecuentes
+CREATE INDEX idx_clientes_empresa ON clientes(empresa_id);
 CREATE INDEX idx_usuarios_empresa ON usuarios(empresa_id);
 CREATE INDEX idx_lotes_empresa ON lotes(empresa_id);
 CREATE INDEX idx_propietarios_empresa ON propietarios(empresa_id);

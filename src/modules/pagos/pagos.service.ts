@@ -3,8 +3,10 @@ import pool from '../../config/database.js';
 export interface PagoRow {
   id: number;
   empresa_id: number;
-  contrato_id: number;
-  propietario_id: number;
+  contrato_id: number | null;
+  propietario_id: number | null;
+  cliente_id: number | null;
+  num_cuota: number | null;
   monto: number;
   fecha_pago: string | null;
   fecha_vencimiento: string;
@@ -18,15 +20,24 @@ export interface PagoRow {
 export interface PagoDetalle extends PagoRow {
   propietario_nombre: string;
   lote_clave: string;
+  cliente_nombre_comprador: string | null;
+  cliente_descripcion_lote: string | null;
+  cliente_num_cuotas: number | null;
 }
 
 export async function listPagos(empresaId: number): Promise<PagoDetalle[]> {
   const [rows] = await pool.query(
-    `SELECT pg.*, p.nombre AS propietario_nombre, l.clave AS lote_clave
+    `SELECT pg.*,
+            COALESCE(p.nombre, '—') AS propietario_nombre,
+            COALESCE(l.clave, '\u2014')  AS lote_clave,
+            cl.nombre_comprador          AS cliente_nombre_comprador,
+            cl.descripcion_lote          AS cliente_descripcion_lote,
+            cl.num_cuotas                AS cliente_num_cuotas
      FROM pagos pg
-     JOIN propietarios p ON p.id = pg.propietario_id
-     JOIN contratos c ON c.id = pg.contrato_id
-     JOIN lotes l ON l.id = c.lote_id
+     LEFT JOIN propietarios p ON p.id = pg.propietario_id
+     LEFT JOIN contratos c ON c.id = pg.contrato_id
+     LEFT JOIN lotes l ON l.id = c.lote_id
+     LEFT JOIN clientes cl ON cl.id = pg.cliente_id
      WHERE pg.empresa_id = ?
      ORDER BY pg.fecha_vencimiento DESC`,
     [empresaId],
@@ -36,11 +47,17 @@ export async function listPagos(empresaId: number): Promise<PagoDetalle[]> {
 
 export async function getPago(id: number, empresaId: number): Promise<PagoDetalle | null> {
   const [rows] = await pool.query(
-    `SELECT pg.*, p.nombre AS propietario_nombre, l.clave AS lote_clave
+    `SELECT pg.*,
+            COALESCE(p.nombre, '—') AS propietario_nombre,
+            COALESCE(l.clave, '\u2014')  AS lote_clave,
+            cl.nombre_comprador          AS cliente_nombre_comprador,
+            cl.descripcion_lote          AS cliente_descripcion_lote,
+            cl.num_cuotas                AS cliente_num_cuotas
      FROM pagos pg
-     JOIN propietarios p ON p.id = pg.propietario_id
-     JOIN contratos c ON c.id = pg.contrato_id
-     JOIN lotes l ON l.id = c.lote_id
+     LEFT JOIN propietarios p ON p.id = pg.propietario_id
+     LEFT JOIN contratos c ON c.id = pg.contrato_id
+     LEFT JOIN lotes l ON l.id = c.lote_id
+     LEFT JOIN clientes cl ON cl.id = pg.cliente_id
      WHERE pg.id = ? AND pg.empresa_id = ? LIMIT 1`,
     [id, empresaId],
   );
@@ -51,8 +68,9 @@ export async function getPago(id: number, empresaId: number): Promise<PagoDetall
 export async function createPago(
   empresaId: number,
   data: {
-    contrato_id: number;
-    propietario_id: number;
+    contrato_id?: number | null;
+    propietario_id?: number | null;
+    cliente_id?: number | null;
     monto: number;
     fecha_vencimiento: string;
     fecha_pago?: string;
@@ -61,15 +79,26 @@ export async function createPago(
     referencia?: string;
   },
 ): Promise<PagoDetalle> {
+  // Auto-detect num_cuota for this cliente
+  let numCuota: number | null = null;
+  if (data.cliente_id) {
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) as total FROM pagos WHERE cliente_id = ? AND empresa_id = ?`,
+      [data.cliente_id, empresaId],
+    ) as any;
+    numCuota = (countRows[0].total as number) + 1;
+  }
+
   const [result] = await pool.query(
     `INSERT INTO pagos
-       (empresa_id, contrato_id, propietario_id, monto, fecha_vencimiento,
-        fecha_pago, estado, metodo_pago, referencia)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (empresa_id, contrato_id, propietario_id, cliente_id, num_cuota,
+        monto, fecha_vencimiento, fecha_pago, estado, metodo_pago, referencia)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      empresaId, data.contrato_id, data.propietario_id, data.monto,
-      data.fecha_vencimiento, data.fecha_pago ?? null,
-      data.estado ?? 'pendiente', data.metodo_pago ?? null, data.referencia ?? null,
+      empresaId, data.contrato_id ?? null, data.propietario_id ?? null,
+      data.cliente_id ?? null, numCuota,
+      data.monto, data.fecha_vencimiento, data.fecha_pago ?? null,
+      'pagado', data.metodo_pago ?? null, data.referencia ?? null,
     ],
   ) as any;
   return (await getPago(result.insertId, empresaId))!;
@@ -79,6 +108,7 @@ export async function updatePago(
   id: number,
   empresaId: number,
   data: Partial<{
+    cliente_id: number | null;
     monto: number; fecha_vencimiento: string; fecha_pago: string;
     estado: string; metodo_pago: string; referencia: string;
   }>,
@@ -86,6 +116,7 @@ export async function updatePago(
   const fields: string[] = [];
   const values: unknown[] = [];
 
+  if (data.cliente_id !== undefined)        { fields.push('cliente_id = ?');        values.push(data.cliente_id); }
   if (data.monto !== undefined)             { fields.push('monto = ?');             values.push(data.monto); }
   if (data.fecha_vencimiento !== undefined) { fields.push('fecha_vencimiento = ?'); values.push(data.fecha_vencimiento); }
   if (data.fecha_pago !== undefined)        { fields.push('fecha_pago = ?');        values.push(data.fecha_pago); }

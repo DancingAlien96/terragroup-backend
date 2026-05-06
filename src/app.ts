@@ -14,6 +14,7 @@ import carteraRoutes from './modules/cartera/cartera.routes.js';
 import empresasRoutes from './modules/empresas/empresas.routes.js';
 import planesRoutes from './modules/planes/planes.routes.js';
 import statsRoutes from './modules/stats/stats.routes.js';
+import clientesRoutes from './modules/clientes/clientes.routes.js';
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ app.use('/api/cartera',       carteraRoutes);
 app.use('/api/empresas',      empresasRoutes);
 app.use('/api/planes',        planesRoutes);
 app.use('/api/stats',         statsRoutes);
+app.use('/api/clientes',      clientesRoutes);
 
 app.get('/', (_req, res) => {
   res.json({ success: true, message: 'TerraGroup backend running' });
