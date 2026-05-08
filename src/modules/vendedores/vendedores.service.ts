@@ -20,6 +20,7 @@ export interface ComisionRow {
   vendedor_id: number;
   vendedor_nombre: string;
   descripcion_lote: string;
+  valor_lote: number;
   porcentaje: number;
   monto_comision: number;
   fecha_venta: string;
@@ -105,17 +106,55 @@ export async function listComisiones(vendedorId: number, empresaId: number): Pro
 export async function createComision(
   empresaId: number,
   vendedorId: number,
-  data: { descripcion_lote: string; porcentaje: number; monto_comision: number; fecha_venta: string },
+  data: { descripcion_lote: string; valor_lote: number; porcentaje: number; fecha_venta: string },
 ): Promise<ComisionRow> {
+  const monto = parseFloat((data.valor_lote * data.porcentaje / 100).toFixed(2));
   const [result] = await pool.query(
-    `INSERT INTO comisiones (empresa_id, vendedor_id, descripcion_lote, porcentaje, monto_comision, fecha_venta) VALUES (?, ?, ?, ?, ?, ?)`,
-    [empresaId, vendedorId, data.descripcion_lote, data.porcentaje, data.monto_comision, data.fecha_venta],
+    `INSERT INTO comisiones (empresa_id, vendedor_id, descripcion_lote, valor_lote, porcentaje, monto_comision, fecha_venta) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [empresaId, vendedorId, data.descripcion_lote, data.valor_lote, data.porcentaje, monto, data.fecha_venta],
   ) as any;
   const [rows] = await pool.query(
     `SELECT c.*, v.nombre AS vendedor_nombre FROM comisiones c JOIN vendedores v ON v.id = c.vendedor_id WHERE c.id = ?`,
     [result.insertId],
   );
   return (rows as ComisionRow[])[0];
+}
+
+export async function updateComision(
+  id: number,
+  empresaId: number,
+  data: { descripcion_lote?: string; valor_lote?: number; porcentaje?: number; fecha_venta?: string },
+): Promise<ComisionRow | null> {
+  // Fetch current row to recalculate if needed
+  const [curr] = await pool.query(`SELECT * FROM comisiones WHERE id = ? AND empresa_id = ?`, [id, empresaId]) as any;
+  const current = (curr as any[])[0];
+  if (!current) return null;
+  const valorLote  = data.valor_lote  ?? Number(current.valor_lote);
+  const porcentaje = data.porcentaje  ?? Number(current.porcentaje);
+  const monto = parseFloat((valorLote * porcentaje / 100).toFixed(2));
+  await pool.query(
+    `UPDATE comisiones SET
+       descripcion_lote = ?,
+       valor_lote       = ?,
+       porcentaje       = ?,
+       monto_comision   = ?,
+       fecha_venta      = ?
+     WHERE id = ? AND empresa_id = ?`,
+    [
+      data.descripcion_lote ?? current.descripcion_lote,
+      valorLote,
+      porcentaje,
+      monto,
+      data.fecha_venta ?? current.fecha_venta,
+      id,
+      empresaId,
+    ],
+  );
+  const [rows] = await pool.query(
+    `SELECT c.*, v.nombre AS vendedor_nombre FROM comisiones c JOIN vendedores v ON v.id = c.vendedor_id WHERE c.id = ?`,
+    [id],
+  );
+  return (rows as ComisionRow[])[0] ?? null;
 }
 
 export async function deleteComision(id: number, empresaId: number): Promise<boolean> {

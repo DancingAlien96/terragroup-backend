@@ -4,6 +4,8 @@ export interface ClienteRow {
   id: number;
   empresa_id: number;
   nombre_comprador: string;
+  email: string | null;
+  telefono: string | null;
   descripcion_lote: string | null;
   precio_neto: number;
   enganche: number;
@@ -38,6 +40,8 @@ export async function createCliente(
   empresaId: number,
   data: {
     nombre_comprador: string;
+    email?: string | null;
+    telefono?: string | null;
     descripcion_lote?: string | null;
     precio_neto: number;
     enganche: number;
@@ -50,11 +54,12 @@ export async function createCliente(
 ): Promise<ClienteRow> {
   const [result] = await pool.query(
     `INSERT INTO clientes
-       (empresa_id, nombre_comprador, descripcion_lote, precio_neto, enganche,
+       (empresa_id, nombre_comprador, email, telefono, descripcion_lote, precio_neto, enganche,
         num_cuotas, valor_cuota, fecha_deposito, num_transferencia, entidad_bancaria)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      empresaId, data.nombre_comprador, data.descripcion_lote ?? null,
+      empresaId, data.nombre_comprador, data.email ?? null, data.telefono ?? null,
+      data.descripcion_lote ?? null,
       data.precio_neto, data.enganche, data.num_cuotas, data.valor_cuota,
       data.fecha_deposito, data.num_transferencia ?? null, data.entidad_bancaria ?? null,
     ],
@@ -67,6 +72,8 @@ export async function updateCliente(
   empresaId: number,
   data: Partial<{
     nombre_comprador: string;
+    email: string | null;
+    telefono: string | null;
     descripcion_lote: string | null;
     precio_neto: number;
     enganche: number;
@@ -82,6 +89,8 @@ export async function updateCliente(
   const values: unknown[] = [];
 
   if (data.nombre_comprador !== undefined)  { fields.push('nombre_comprador = ?');  values.push(data.nombre_comprador); }
+  if (data.email !== undefined)             { fields.push('email = ?');             values.push(data.email); }
+  if (data.telefono !== undefined)          { fields.push('telefono = ?');          values.push(data.telefono); }
   if (data.descripcion_lote !== undefined)  { fields.push('descripcion_lote = ?');  values.push(data.descripcion_lote); }
   if (data.precio_neto !== undefined)       { fields.push('precio_neto = ?');       values.push(data.precio_neto); }
   if (data.enganche !== undefined)          { fields.push('enganche = ?');          values.push(data.enganche); }

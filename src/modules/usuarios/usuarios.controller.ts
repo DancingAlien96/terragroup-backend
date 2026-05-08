@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as svc from './usuarios.service.js';
+import { sendBienvenidaUsuario } from '../../config/mailer.js';
 
 export async function list(req: Request, res: Response) {
   try {
@@ -27,6 +28,10 @@ export async function create(req: Request, res: Response) {
   }
   try {
     const user = await svc.createUsuario(req.user!.empresaId, { nombre, email, username, password, rol });
+
+    // Send welcome email (fire-and-forget)
+    sendBienvenidaUsuario({ to: email, nombre, username, password, rol }).catch(() => {});
+
     return res.status(201).json({ success: true, data: user });
   } catch (e: any) {
     if (e?.code === 'ER_DUP_ENTRY') {
@@ -37,8 +42,18 @@ export async function create(req: Request, res: Response) {
 }
 
 export async function update(req: Request, res: Response) {
+  const targetId = Number(req.params.id);
+  const me = req.user!;
+  // Prevent self-deactivation
+  if (targetId === me.id && req.body.activo === false) {
+    return res.status(400).json({ success: false, message: 'No puedes desactivarte a ti mismo' });
+  }
+  // Prevent self rol change
+  if (targetId === me.id && req.body.rol && req.body.rol !== me.rol) {
+    return res.status(400).json({ success: false, message: 'No puedes cambiar tu propio rol' });
+  }
   try {
-    const user = await svc.updateUsuario(Number(req.params.id), req.user!.empresaId, req.body);
+    const user = await svc.updateUsuario(targetId, me.empresaId, req.body);
     if (!user) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     return res.json({ success: true, data: user });
   } catch (e: any) {
@@ -50,8 +65,12 @@ export async function update(req: Request, res: Response) {
 }
 
 export async function remove(req: Request, res: Response) {
+  const targetId = Number(req.params.id);
+  if (targetId === req.user!.id) {
+    return res.status(400).json({ success: false, message: 'No puedes eliminar tu propia cuenta' });
+  }
   try {
-    const deleted = await svc.deleteUsuario(Number(req.params.id), req.user!.empresaId);
+    const deleted = await svc.deleteUsuario(targetId, req.user!.empresaId);
     if (!deleted) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     return res.json({ success: true, message: 'Usuario eliminado' });
   } catch (e) {

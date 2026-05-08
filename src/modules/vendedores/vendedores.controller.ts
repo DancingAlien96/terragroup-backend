@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as svc from './vendedores.service.js';
 
+
 export async function list(req: Request, res: Response) {
   try { return res.json({ success: true, data: await svc.listVendedores(req.user!.empresaId) }); }
   catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
@@ -37,13 +38,31 @@ export async function listComisiones(req: Request, res: Response) {
 }
 
 export async function createComision(req: Request, res: Response) {
-  const { descripcion_lote, porcentaje, monto_comision, fecha_venta } = req.body;
-  if (!descripcion_lote || porcentaje === undefined || !monto_comision || !fecha_venta) {
-    return res.status(400).json({ success: false, message: 'Faltan campos requeridos' });
+  const { descripcion_lote, valor_lote, porcentaje, fecha_venta } = req.body;
+  if (!descripcion_lote || valor_lote === undefined || porcentaje === undefined || !fecha_venta) {
+    return res.status(400).json({ success: false, message: 'Faltan campos requeridos (descripcion_lote, valor_lote, porcentaje, fecha_venta)' });
   }
   try {
-    const item = await svc.createComision(req.user!.empresaId, Number(req.params.id), req.body);
+    const item = await svc.createComision(req.user!.empresaId, Number(req.params.id), {
+      descripcion_lote,
+      valor_lote: Number(valor_lote),
+      porcentaje: Number(porcentaje),
+      fecha_venta,
+    });
     return res.status(201).json({ success: true, data: item });
+  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+}
+
+export async function updateComision(req: Request, res: Response) {
+  try {
+    const data: any = {};
+    if (req.body.descripcion_lote !== undefined) data.descripcion_lote = req.body.descripcion_lote;
+    if (req.body.valor_lote !== undefined)  data.valor_lote  = Number(req.body.valor_lote);
+    if (req.body.porcentaje !== undefined)  data.porcentaje  = Number(req.body.porcentaje);
+    if (req.body.fecha_venta !== undefined) data.fecha_venta = req.body.fecha_venta;
+    const item = await svc.updateComision(Number(req.params.comisionId), req.user!.empresaId, data);
+    if (!item) return res.status(404).json({ success: false, message: 'Comision no encontrada' });
+    return res.json({ success: true, data: item });
   } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
 }
 
