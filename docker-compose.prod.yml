@@ -1,0 +1,40 @@
+services:
+  db:
+    image: mysql:8.1
+    container_name: terragroup-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASS:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-terragroup}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: .
+    container_name: terragroup-backend
+    restart: unless-stopped
+    ports:
+      - '4000:4000'
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-root}
+      DB_PASS: ${DB_PASS:-rootpassword}
+      DB_NAME: ${DB_NAME:-terragroup}
+      PORT: 4000
+      JWT_SECRET: ${JWT_SECRET:-terragroup_secret_2024}
+      MAIL_USER: ${MAIL_USER}
+      MAIL_PASS: ${MAIL_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
