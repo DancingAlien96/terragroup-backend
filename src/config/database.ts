@@ -15,6 +15,11 @@ const pool = mysql.createPool({
   charset: 'utf8mb4',
 });
 
+// Garantiza UTF-8 en cada conexión del pool, independiente del charset del servidor
+pool.on('connection', (conn) => {
+  conn.query("SET NAMES 'utf8mb4' COLLATE 'utf8mb4_unicode_ci'");
+});
+
 export async function testConnection() {
   const connection = await pool.getConnection();
   try {

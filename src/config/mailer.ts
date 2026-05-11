@@ -218,4 +218,71 @@ export async function sendBienvenidaUsuario(opts: {
   });
 }
 
+/* ── Email: comprobante de registro de enganche ──────────────── */
+export async function sendComprobanteEnganche(opts: {
+  to: string | null;
+  clienteNombre: string;
+  descripcionLote: string | null;
+  precioNeto: number;
+  enganche: number;
+  numCuotas: number;
+  valorCuota: number;
+  fechaDeposito: string;
+  numTransferencia: string | null;
+  metodoPago: string | null;
+  entidadBancaria: string | null;
+}) {
+  // Always CC the company admin account
+  const adminEmail = process.env.MAIL_USER!;
+  const recipients = opts.to
+    ? [opts.to, adminEmail].filter((v, i, a) => a.indexOf(v) === i)  // deduplicate
+    : [adminEmail];
+
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ' }).format(n);
+
+  const rows = [
+    ['Cliente',            opts.clienteNombre],
+    ['Lote / Descripción', opts.descripcionLote ?? '—'],
+    ['Precio neto',        fmt(opts.precioNeto)],
+    ['Enganche',           `<strong style="color:#d4a843">${fmt(opts.enganche)}</strong>`],
+    ['N° de cuotas',       String(opts.numCuotas)],
+    ['Valor por cuota',    fmt(opts.valorCuota)],
+    ['Fecha de depósito',  opts.fechaDeposito],
+    ...(opts.metodoPago      ? [['Método de pago',    opts.metodoPago]]      : []),
+    ...(opts.numTransferencia ? [['N° transferencia', opts.numTransferencia]] : []),
+    ...(opts.entidadBancaria  ? [['Entidad bancaria', opts.entidadBancaria]]  : []),
+  ] as [string, string][];
+
+  const tableRows = rows.map(([label, value]) => `
+    <tr>
+      <td style="padding:7px 0;font-size:13px;color:#888;width:160px;vertical-align:top;">${label}</td>
+      <td style="padding:7px 0;font-size:14px;color:#1a1a1a;">${value}</td>
+    </tr>`).join('');
+
+  const body = `
+    <h2 style="margin:0 0 8px;color:#1a1a1a;font-size:20px;">🏠 Comprobante de registro de enganche</h2>
+    <p style="margin:0 0 24px;color:#555;font-size:14px;">
+      Se ha registrado exitosamente el pago de enganche para el cliente
+      <strong>${opts.clienteNombre}</strong>. A continuación los detalles del registro:
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="background:#f9fafb;border-radius:8px;padding:20px 24px;margin-bottom:24px;">
+      ${tableRows}
+    </table>
+
+    <p style="font-size:13px;color:#888;margin:0;">
+      Conserva este correo como comprobante oficial del registro de enganche en TerraGroup.
+    </p>
+  `;
+
+  await transporter.sendMail({
+    from: FROM,
+    to: recipients.join(', '),
+    subject: `🏠 Comprobante de enganche — ${opts.clienteNombre}`,
+    html: baseHtml('Comprobante de enganche', body),
+  });
+}
+
 export default transporter;

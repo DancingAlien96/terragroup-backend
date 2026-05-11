@@ -24,6 +24,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Forzar UTF-8 en todas las respuestas JSON
+app.use((_req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
+
 app.use('/api/auth',          authRoutes);
 app.use('/api/usuarios',      usuariosRoutes);
 app.use('/api/lotes',         lotesRoutes);

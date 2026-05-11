@@ -13,6 +13,7 @@ export interface ClienteRow {
   valor_cuota: number;
   fecha_deposito: string;
   num_transferencia: string | null;
+  metodo_pago: string | null;
   entidad_bancaria: 'Banrural' | 'Industrial' | 'G&T' | 'BAC' | null;
   activo: boolean;
   created_at: string;
@@ -49,19 +50,20 @@ export async function createCliente(
     valor_cuota: number;
     fecha_deposito: string;
     num_transferencia?: string | null;
+    metodo_pago?: string | null;
     entidad_bancaria?: string | null;
   },
 ): Promise<ClienteRow> {
   const [result] = await pool.query(
     `INSERT INTO clientes
        (empresa_id, nombre_comprador, email, telefono, descripcion_lote, precio_neto, enganche,
-        num_cuotas, valor_cuota, fecha_deposito, num_transferencia, entidad_bancaria)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        num_cuotas, valor_cuota, fecha_deposito, num_transferencia, metodo_pago, entidad_bancaria)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       empresaId, data.nombre_comprador, data.email ?? null, data.telefono ?? null,
       data.descripcion_lote ?? null,
       data.precio_neto, data.enganche, data.num_cuotas, data.valor_cuota,
-      data.fecha_deposito, data.num_transferencia ?? null, data.entidad_bancaria ?? null,
+      data.fecha_deposito, data.num_transferencia ?? null, data.metodo_pago ?? null, data.entidad_bancaria ?? null,
     ],
   ) as any;
   return (await getCliente(result.insertId, empresaId))!;
@@ -82,6 +84,7 @@ export async function updateCliente(
     fecha_deposito: string;
     num_transferencia: string | null;
     entidad_bancaria: string | null;
+    metodo_pago: string | null;
     activo: boolean;
   }>,
 ): Promise<ClienteRow | null> {
@@ -98,6 +101,7 @@ export async function updateCliente(
   if (data.valor_cuota !== undefined)       { fields.push('valor_cuota = ?');       values.push(data.valor_cuota); }
   if (data.fecha_deposito !== undefined)    { fields.push('fecha_deposito = ?');    values.push(data.fecha_deposito); }
   if (data.num_transferencia !== undefined) { fields.push('num_transferencia = ?'); values.push(data.num_transferencia); }
+  if (data.metodo_pago !== undefined)       { fields.push('metodo_pago = ?');       values.push(data.metodo_pago); }
   if (data.entidad_bancaria !== undefined)  { fields.push('entidad_bancaria = ?');  values.push(data.entidad_bancaria); }
   if (data.activo !== undefined)            { fields.push('activo = ?');            values.push(data.activo); }
 

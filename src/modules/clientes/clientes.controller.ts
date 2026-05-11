@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as svc from './clientes.service.js';
+import { sendComprobanteEnganche } from '../../config/mailer.js';
 
 export async function list(req: Request, res: Response) {
   try {
@@ -22,6 +23,22 @@ export async function create(req: Request, res: Response) {
   }
   try {
     const item = await svc.createCliente(req.user!.empresaId, req.body);
+
+    // Fire-and-forget: send comprobante to client (if has email) + admin
+    sendComprobanteEnganche({
+      to:               item.email,
+      clienteNombre:    item.nombre_comprador,
+      descripcionLote:  item.descripcion_lote,
+      precioNeto:       item.precio_neto,
+      enganche:         item.enganche,
+      numCuotas:        item.num_cuotas,
+      valorCuota:       item.valor_cuota,
+      fechaDeposito:    item.fecha_deposito,
+      numTransferencia: item.num_transferencia,
+      metodoPago:       item.metodo_pago,
+      entidadBancaria:  item.entidad_bancaria,
+    }).catch(err => console.error('[mailer] Error enviando comprobante de enganche:', err));
+
     return res.status(201).json({ success: true, data: item });
   } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
 }

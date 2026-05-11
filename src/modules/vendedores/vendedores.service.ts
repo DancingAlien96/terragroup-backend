@@ -4,7 +4,7 @@ export interface VendedorRow {
   id: number;
   empresa_id: number;
   nombre: string;
-  edad: number | null;
+  nit: string | null;
   telefono: string | null;
   email: string | null;
   dpi: string | null;
@@ -58,11 +58,11 @@ export async function getVendedor(id: number, empresaId: number): Promise<Vended
 
 export async function createVendedor(
   empresaId: number,
-  data: { nombre: string; edad?: number | null; telefono?: string | null; email?: string | null; dpi?: string | null; direccion?: string | null },
+  data: { nombre: string; nit?: string | null; telefono?: string | null; email?: string | null; dpi?: string | null; direccion?: string | null },
 ): Promise<VendedorRow> {
   const [result] = await pool.query(
-    `INSERT INTO vendedores (empresa_id, nombre, edad, telefono, email, dpi, direccion) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [empresaId, data.nombre, data.edad ?? null, data.telefono ?? null, data.email ?? null, data.dpi ?? null, data.direccion ?? null],
+    `INSERT INTO vendedores (empresa_id, nombre, nit, telefono, email, dpi, direccion) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [empresaId, data.nombre, data.nit ?? null, data.telefono ?? null, data.email ?? null, data.dpi ?? null, data.direccion ?? null],
   ) as any;
   return (await getVendedor(result.insertId, empresaId))!;
 }
@@ -70,12 +70,12 @@ export async function createVendedor(
 export async function updateVendedor(
   id: number,
   empresaId: number,
-  data: Partial<{ nombre: string; edad: number | null; telefono: string | null; email: string | null; dpi: string | null; direccion: string | null; activo: boolean }>,
+  data: Partial<{ nombre: string; nit: string | null; telefono: string | null; email: string | null; dpi: string | null; direccion: string | null; activo: boolean }>,
 ): Promise<VendedorRow | null> {
   const fields: string[] = [];
   const values: any[] = [];
   if (data.nombre !== undefined)    { fields.push('nombre = ?');    values.push(data.nombre); }
-  if (data.edad !== undefined)      { fields.push('edad = ?');      values.push(data.edad); }
+  if (data.nit !== undefined)       { fields.push('nit = ?');       values.push(data.nit); }
   if (data.telefono !== undefined)  { fields.push('telefono = ?');  values.push(data.telefono); }
   if (data.email !== undefined)     { fields.push('email = ?');     values.push(data.email); }
   if (data.dpi !== undefined)       { fields.push('dpi = ?');       values.push(data.dpi); }
