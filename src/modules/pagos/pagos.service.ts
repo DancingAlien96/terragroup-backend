@@ -13,6 +13,7 @@ export interface PagoRow {
   estado: 'pendiente' | 'pagado' | 'vencido';
   metodo_pago: string | null;
   referencia: string | null;
+  comprobante_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -77,28 +78,34 @@ export async function createPago(
     estado?: string;
     metodo_pago?: string;
     referencia?: string;
+    comprobante_url?: string | null;
   },
 ): Promise<PagoDetalle> {
-  // Auto-detect num_cuota for this cliente
+  // Auto-detect num_cuota for this cliente, offset by cuota_inicio
   let numCuota: number | null = null;
   if (data.cliente_id) {
     const [countRows] = await pool.query(
       `SELECT COUNT(*) as total FROM pagos WHERE cliente_id = ? AND empresa_id = ?`,
       [data.cliente_id, empresaId],
     ) as any;
-    numCuota = (countRows[0].total as number) + 1;
+    const [clienteRows] = await pool.query(
+      `SELECT cuota_inicio FROM clientes WHERE id = ? AND empresa_id = ? LIMIT 1`,
+      [data.cliente_id, empresaId],
+    ) as any;
+    const cuotaInicio: number = clienteRows[0]?.cuota_inicio ?? 1;
+    numCuota = (countRows[0].total as number) + cuotaInicio;
   }
 
   const [result] = await pool.query(
     `INSERT INTO pagos
        (empresa_id, contrato_id, propietario_id, cliente_id, num_cuota,
-        monto, fecha_vencimiento, fecha_pago, estado, metodo_pago, referencia)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        monto, fecha_vencimiento, fecha_pago, estado, metodo_pago, referencia, comprobante_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       empresaId, data.contrato_id ?? null, data.propietario_id ?? null,
       data.cliente_id ?? null, numCuota,
       data.monto, data.fecha_vencimiento, data.fecha_pago ?? null,
-      'pagado', data.metodo_pago ?? null, data.referencia ?? null,
+      'pagado', data.metodo_pago ?? null, data.referencia ?? null, data.comprobante_url ?? null,
     ],
   ) as any;
   return (await getPago(result.insertId, empresaId))!;
@@ -110,7 +117,7 @@ export async function updatePago(
   data: Partial<{
     cliente_id: number | null;
     monto: number; fecha_vencimiento: string; fecha_pago: string;
-    estado: string; metodo_pago: string; referencia: string;
+    estado: string; metodo_pago: string; referencia: string; comprobante_url: string | null;
   }>,
 ): Promise<PagoDetalle | null> {
   const fields: string[] = [];
@@ -123,6 +130,7 @@ export async function updatePago(
   if (data.estado !== undefined)            { fields.push('estado = ?');            values.push(data.estado); }
   if (data.metodo_pago !== undefined)       { fields.push('metodo_pago = ?');       values.push(data.metodo_pago); }
   if (data.referencia !== undefined)        { fields.push('referencia = ?');        values.push(data.referencia); }
+  if (data.comprobante_url !== undefined)   { fields.push('comprobante_url = ?');   values.push(data.comprobante_url); }
 
   if (fields.length > 0) {
     values.push(id, empresaId);

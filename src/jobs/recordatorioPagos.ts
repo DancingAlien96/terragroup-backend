@@ -18,6 +18,7 @@ interface ClienteRow {
   descripcion_lote: string | null;
   num_cuotas: number;
   valor_cuota: number;
+  cuota_inicio: number;
   fecha_deposito: string;
 }
 
@@ -28,6 +29,7 @@ interface PagoCount {
 
 function calcularCuotasVencidas(cliente: ClienteRow, pagosCount: number, today: Date): number {
   const deposito = new Date(cliente.fecha_deposito);
+  const cuotasPrevias = Math.max(0, (cliente.cuota_inicio ?? 1) - 1);
   let vencidas = 0;
   for (let i = 1; i <= cliente.num_cuotas; i++) {
     const due = new Date(deposito);
@@ -35,11 +37,12 @@ function calcularCuotasVencidas(cliente: ClienteRow, pagosCount: number, today: 
     if (due <= today) vencidas++;
     else break;
   }
-  return Math.max(0, vencidas - pagosCount);
+  return Math.max(0, vencidas - pagosCount - cuotasPrevias);
 }
 
 function diasDesde(cliente: ClienteRow, pagosCount: number, today: Date): number {
   const deposito = new Date(cliente.fecha_deposito);
+  const cuotasPrevias = Math.max(0, (cliente.cuota_inicio ?? 1) - 1);
   // Fecha de la cuota más antigua sin pagar
   let cuotasSuperadas = 0;
   for (let i = 1; i <= cliente.num_cuotas; i++) {
@@ -47,7 +50,7 @@ function diasDesde(cliente: ClienteRow, pagosCount: number, today: Date): number
     due.setMonth(due.getMonth() + i);
     if (due > today) break;
     cuotasSuperadas++;
-    if (cuotasSuperadas > pagosCount) {
+    if (cuotasSuperadas > pagosCount + cuotasPrevias) {
       return Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
     }
   }
@@ -71,7 +74,7 @@ async function ejecutarRecordatorio() {
   try {
     // 1. Traer todos los clientes activos
     const [clienteRows] = await pool.query(
-      `SELECT id, empresa_id, nombre_comprador, descripcion_lote, num_cuotas, valor_cuota, fecha_deposito
+      `SELECT id, empresa_id, nombre_comprador, descripcion_lote, num_cuotas, valor_cuota, cuota_inicio, fecha_deposito
        FROM clientes WHERE activo = TRUE`,
     ) as [ClienteRow[], any];
 

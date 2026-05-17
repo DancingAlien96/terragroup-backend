@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS clientes (
   enganche DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   num_cuotas INT NOT NULL DEFAULT 0,
   valor_cuota DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  cuota_inicio INT NOT NULL DEFAULT 1,
   fecha_deposito DATE NOT NULL,
   num_transferencia VARCHAR(100) NULL,
   metodo_pago VARCHAR(50) NULL,
@@ -137,12 +138,25 @@ CREATE TABLE IF NOT EXISTS pagos (
   estado ENUM('pendiente','pagado','vencido') NOT NULL DEFAULT 'pendiente',
   metodo_pago VARCHAR(50) NULL,
   referencia VARCHAR(100) NULL,
+  comprobante_url VARCHAR(512) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_pagos_empresa FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT fk_pagos_contrato FOREIGN KEY (contrato_id) REFERENCES contratos(id) ON UPDATE CASCADE ON DELETE SET NULL,
   CONSTRAINT fk_pagos_propietario FOREIGN KEY (propietario_id) REFERENCES propietarios(id) ON UPDATE CASCADE ON DELETE SET NULL,
-  CONSTRAINT fk_pagos_cliente FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON UPDATE CASCADE ON DELETE SET NULL
+  CONSTRAINT fk_pagos_cliente FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Expedientes de clientes (papelería legal)
+CREATE TABLE IF NOT EXISTS expedientes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  empresa_id INT NOT NULL,
+  cliente_id INT NOT NULL,
+  nombre VARCHAR(200) NOT NULL,
+  archivo_url VARCHAR(512) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_expedientes_empresa FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT fk_expedientes_cliente FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Notificaciones internas
