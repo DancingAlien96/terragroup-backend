@@ -3,7 +3,7 @@ import * as svc from './expedientes.service.js';
 
 export async function list(req: Request, res: Response) {
   try {
-    const empresaId = req.user!.empresa_id;
+    const empresaId = req.user!.empresaId;
     const clienteId = Number(req.query.cliente_id);
     if (!clienteId) {
       res.status(400).json({ success: false, message: 'cliente_id requerido' });
@@ -18,7 +18,7 @@ export async function list(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
-    const empresaId = req.user!.empresa_id;
+    const empresaId = req.user!.empresaId;
     const { cliente_id, nombre, archivo_url } = req.body;
     if (!cliente_id || !nombre || !archivo_url) {
       res.status(400).json({ success: false, message: 'cliente_id, nombre y archivo_url son requeridos' });
@@ -33,7 +33,7 @@ export async function create(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   try {
-    const empresaId = req.user!.empresa_id;
+    const empresaId = req.user!.empresaId;
     const id = Number(req.params.id);
     const ok = await svc.deleteExpediente(id, empresaId);
     if (!ok) { res.status(404).json({ success: false, message: 'No encontrado' }); return; }
