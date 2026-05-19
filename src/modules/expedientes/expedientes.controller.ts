@@ -4,12 +4,13 @@ import * as svc from './expedientes.service.js';
 export async function list(req: Request, res: Response) {
   try {
     const empresaId = req.user!.empresaId;
-    const clienteId = Number(req.query.cliente_id);
-    if (!clienteId) {
-      res.status(400).json({ success: false, message: 'cliente_id requerido' });
+    // Acepta ambos nombres para compatibilidad con frontend en transición
+    const ventaId = Number(req.query.venta_id ?? req.query.cliente_id);
+    if (!ventaId) {
+      res.status(400).json({ success: false, message: 'venta_id requerido' });
       return;
     }
-    const data = await svc.listExpedientes(empresaId, clienteId);
+    const data = await svc.listExpedientes(empresaId, ventaId);
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: String(err) });
@@ -19,12 +20,13 @@ export async function list(req: Request, res: Response) {
 export async function create(req: Request, res: Response) {
   try {
     const empresaId = req.user!.empresaId;
-    const { cliente_id, nombre, archivo_url } = req.body;
-    if (!cliente_id || !nombre || !archivo_url) {
-      res.status(400).json({ success: false, message: 'cliente_id, nombre y archivo_url son requeridos' });
+    const ventaId = Number(req.body.venta_id ?? req.body.cliente_id);
+    const { nombre, archivo_url } = req.body;
+    if (!ventaId || !nombre || !archivo_url) {
+      res.status(400).json({ success: false, message: 'venta_id, nombre y archivo_url son requeridos' });
       return;
     }
-    const data = await svc.createExpediente(empresaId, Number(cliente_id), nombre, archivo_url);
+    const data = await svc.createExpediente(empresaId, ventaId, nombre, archivo_url);
     res.status(201).json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: String(err) });
@@ -33,9 +35,7 @@ export async function create(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   try {
-    const empresaId = req.user!.empresaId;
-    const id = Number(req.params.id);
-    const ok = await svc.deleteExpediente(id, empresaId);
+    const ok = await svc.deleteExpediente(Number(req.params.id), req.user!.empresaId);
     if (!ok) { res.status(404).json({ success: false, message: 'No encontrado' }); return; }
     res.json({ success: true });
   } catch (err) {

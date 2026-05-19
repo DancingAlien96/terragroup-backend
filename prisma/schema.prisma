@@ -1,0 +1,290 @@
+// Schema TerraGroup — modelo normalizado (3NF)
+// Reemplaza el modelo plano `clientes` por `propietarios + ventas + lotes + vendedores`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ── Enums ─────────────────────────────────────────────────────
+
+enum Rol {
+  superadmin
+  admin
+  vendedor
+  supervisor
+}
+
+enum EstadoLote {
+  disponible
+  vendido
+  reservado
+}
+
+enum EstadoCuenta {
+  al_dia
+  moroso
+  vencido
+  liquidado
+}
+
+enum EstadoVenta {
+  activo
+  liquidado
+  cancelado
+}
+
+enum EstadoPago {
+  pendiente
+  pagado
+  vencido
+}
+
+enum EntidadBancaria {
+  Banrural
+  Industrial
+  GT       @map("G&T")
+  BAC
+}
+
+// ── Modelos ───────────────────────────────────────────────────
+
+model Plan {
+  id           Int       @id @default(autoincrement())
+  nombre       String    @unique @db.VarChar(50)
+  precio       Decimal   @db.Decimal(10, 2)
+  maxLotes     Int       @map("max_lotes")
+  maxUsuarios  Int       @map("max_usuarios")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  empresas     Empresa[]
+
+  @@map("planes")
+}
+
+model Empresa {
+  id           Int       @id @default(autoincrement())
+  nombre       String    @db.VarChar(150)
+  email        String?   @db.VarChar(150)
+  telefono     String?   @db.VarChar(20)
+  rfc          String?   @db.VarChar(20)
+  planId       Int       @map("plan_id")
+  activo       Boolean   @default(true)
+  fechaInicio  DateTime? @map("fecha_inicio") @db.Date
+  fechaVence   DateTime? @map("fecha_vence") @db.Date
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  plan            Plan            @relation(fields: [planId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  usuarios        Usuario[]
+  lotes           Lote[]
+  propietarios    Propietario[]
+  vendedores      Vendedor[]
+  comisiones      Comision[]
+  ventas          Venta[]
+  pagos           Pago[]
+  expedientes     Expediente[]
+  notificaciones  Notificacion[]
+
+  @@map("empresas")
+}
+
+model Usuario {
+  id          Int      @id @default(autoincrement())
+  empresaId   Int      @map("empresa_id")
+  nombre      String   @db.VarChar(100)
+  email       String   @unique @db.VarChar(150)
+  username    String   @unique @db.VarChar(80)
+  password    String   @db.VarChar(255)
+  rol         Rol      @default(admin)
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  empresa         Empresa        @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  notificaciones  Notificacion[]
+
+  @@index([empresaId])
+  @@map("usuarios")
+}
+
+model Lote {
+  id           Int        @id @default(autoincrement())
+  empresaId    Int        @map("empresa_id")
+  clave        String     @db.VarChar(50)
+  manzana      String?    @db.VarChar(20)
+  numero       String?    @db.VarChar(20)
+  superficie   Decimal?   @db.Decimal(10, 2)
+  precioVenta  Decimal?   @map("precio_venta") @db.Decimal(12, 2)
+  estado       EstadoLote @default(disponible)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  empresa  Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  ventas   Venta[]
+
+  @@unique([empresaId, clave], name: "uq_lotes_empresa_clave")
+  @@index([empresaId])
+  @@map("lotes")
+}
+
+model Propietario {
+  id            Int          @id @default(autoincrement())
+  empresaId     Int          @map("empresa_id")
+  nombre        String       @db.VarChar(150)
+  telefono      String?      @db.VarChar(20)
+  email         String?      @db.VarChar(150)
+  direccion     String?      @db.Text
+  estadoCuenta  EstadoCuenta @default(al_dia) @map("estado_cuenta")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  empresa  Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  ventas   Venta[]
+
+  @@index([empresaId])
+  @@map("propietarios")
+}
+
+model Vendedor {
+  id         Int      @id @default(autoincrement())
+  empresaId  Int      @map("empresa_id")
+  nombre     String   @db.VarChar(150)
+  nit        String?  @db.VarChar(30)
+  telefono   String?  @db.VarChar(20)
+  email      String?  @db.VarChar(150)
+  dpi        String?  @db.VarChar(30)
+  direccion  String?  @db.VarChar(255)
+  activo     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  empresa     Empresa    @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  comisiones  Comision[]
+  ventas      Venta[]
+
+  @@map("vendedores")
+}
+
+model Comision {
+  id              Int      @id @default(autoincrement())
+  empresaId       Int      @map("empresa_id")
+  vendedorId      Int      @map("vendedor_id")
+  descripcionLote String   @map("descripcion_lote") @db.VarChar(255)
+  valorLote       Decimal  @default(0) @map("valor_lote") @db.Decimal(12, 2)
+  porcentaje      Decimal  @default(0) @db.Decimal(5, 2)
+  montoComision   Decimal  @default(0) @map("monto_comision") @db.Decimal(12, 2)
+  fechaVenta      DateTime @map("fecha_venta") @db.Date
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  empresa   Empresa  @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  vendedor  Vendedor @relation(fields: [vendedorId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@map("comisiones")
+}
+
+// ── Venta: tabla central que reemplaza `contratos` + `clientes` ─────────
+// Une persona (propietarioId) + lote (loteId opcional o descripcionLote libre)
+// + vendedor (vendedorId opcional) + términos financieros + datos de pago inicial.
+
+model Venta {
+  id                 Int               @id @default(autoincrement())
+  empresaId          Int               @map("empresa_id")
+  propietarioId      Int               @map("propietario_id")
+  loteId             Int?              @map("lote_id")
+  descripcionLote    String?           @map("descripcion_lote") @db.VarChar(255)
+  vendedorId         Int?              @map("vendedor_id")
+
+  // Términos financieros
+  precioTotal        Decimal           @map("precio_total") @db.Decimal(12, 2)
+  enganche           Decimal           @default(0) @db.Decimal(12, 2)
+  numCuotas          Int               @default(0) @map("num_cuotas")
+  valorCuota         Decimal           @default(0) @map("valor_cuota") @db.Decimal(12, 2)
+  cuotaInicio        Int               @default(1) @map("cuota_inicio")
+
+  // Fechas
+  fechaInicio        DateTime          @map("fecha_inicio") @db.Date
+  fechaFin           DateTime?         @map("fecha_fin") @db.Date
+
+  // Datos del depósito/pago inicial (rescatados de `clientes`)
+  numTransferencia   String?           @map("num_transferencia") @db.VarChar(100)
+  metodoPago         String?           @map("metodo_pago") @db.VarChar(50)
+  entidadBancaria    EntidadBancaria?  @map("entidad_bancaria")
+
+  estado             EstadoVenta       @default(activo)
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  empresa      Empresa      @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  propietario  Propietario  @relation(fields: [propietarioId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  lote         Lote?        @relation(fields: [loteId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  vendedor     Vendedor?    @relation(fields: [vendedorId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  pagos        Pago[]
+  expedientes  Expediente[]
+
+  @@index([empresaId])
+  @@index([propietarioId])
+  @@index([loteId])
+  @@index([vendedorId])
+  @@map("ventas")
+}
+
+model Pago {
+  id                Int        @id @default(autoincrement())
+  empresaId         Int        @map("empresa_id")
+  ventaId           Int        @map("venta_id")
+  numCuota          Int?       @map("num_cuota")
+  monto             Decimal    @db.Decimal(12, 2)
+  fechaPago         DateTime?  @map("fecha_pago") @db.Date
+  fechaVencimiento  DateTime   @map("fecha_vencimiento") @db.Date
+  estado            EstadoPago @default(pendiente)
+  metodoPago        String?    @map("metodo_pago") @db.VarChar(50)
+  referencia        String?    @db.VarChar(100)
+  comprobanteUrl    String?    @map("comprobante_url") @db.VarChar(512)
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  empresa  Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  venta    Venta   @relation(fields: [ventaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@index([empresaId])
+  @@index([ventaId])
+  @@map("pagos")
+}
+
+model Expediente {
+  id          Int      @id @default(autoincrement())
+  empresaId   Int      @map("empresa_id")
+  ventaId     Int      @map("venta_id")
+  nombre      String   @db.VarChar(200)
+  archivoUrl  String   @map("archivo_url") @db.VarChar(512)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  empresa  Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  venta    Venta   @relation(fields: [ventaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@index([ventaId])
+  @@map("expedientes")
+}
+
+model Notificacion {
+  id         Int      @id @default(autoincrement())
+  empresaId  Int      @map("empresa_id")
+  usuarioId  Int      @map("usuario_id")
+  titulo     String   @db.VarChar(200)
+  mensaje    String   @db.Text
+  leida      Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  empresa  Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  usuario  Usuario @relation(fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@index([empresaId])
+  @@map("notificaciones")
+}

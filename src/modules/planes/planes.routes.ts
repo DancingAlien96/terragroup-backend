@@ -1,13 +1,13 @@
 import { Router } from 'express';
-import pool from '../../config/database.js';
+import prisma from '../../config/prisma.js';
 
 const router = Router();
 
 router.get('/', async (_req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM planes ORDER BY precio ASC');
-    return res.json({ success: true, data: rows });
-  } catch (err) {
+    const planes = await prisma.plan.findMany({ orderBy: { precio: 'asc' } });
+    return res.json({ success: true, data: planes });
+  } catch {
     return res.status(500).json({ success: false, message: 'Error al obtener planes' });
   }
 });

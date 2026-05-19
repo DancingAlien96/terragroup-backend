@@ -1,61 +1,56 @@
-import pool from '../../config/database.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import prisma from '../../config/prisma.js';
+import type { UsuarioModel } from '../../generated/prisma/models.js';
 
-interface UserRecord {
+export interface UserWithPlan {
   id: number;
   empresa_id: number;
   nombre: string;
   email: string;
   username: string;
-  password: string;
-  rol: 'admin' | 'vendedor' | 'supervisor';
-  activo: 0 | 1;
-}
-
-export interface UserWithPlan extends Omit<UserRecord, 'password' | 'activo'> {
+  rol: string;
   empresa_nombre: string;
-  plan: 'basico' | 'profesional' | 'empresarial';
+  plan: string;
 }
 
-export async function findUserByUsername(username: string): Promise<UserRecord | null> {
-  const [rows] = await pool.query('SELECT * FROM usuarios WHERE username = ? LIMIT 1', [username]);
-  const results = rows as UserRecord[];
-  return results.length > 0 ? results[0] : null;
+export function findUserByUsername(username: string) {
+  return prisma.usuario.findUnique({ where: { username } });
 }
 
 export async function getUserWithPlan(userId: number): Promise<UserWithPlan | null> {
-  const [rows] = await pool.query(
-    `SELECT u.id, u.empresa_id, u.nombre, u.email, u.username, u.rol,
-            e.nombre AS empresa_nombre, p.nombre AS plan
-     FROM usuarios u
-     JOIN empresas e ON e.id = u.empresa_id
-     JOIN planes   p ON p.id = e.plan_id
-     WHERE u.id = ? LIMIT 1`,
-    [userId],
-  );
-  const results = rows as UserWithPlan[];
-  return results.length > 0 ? results[0] : null;
+  const u = await prisma.usuario.findUnique({
+    where: { id: userId },
+    include: { empresa: { include: { plan: true } } },
+  });
+  if (!u) return null;
+  return {
+    id:             u.id,
+    empresa_id:     u.empresaId,
+    nombre:         u.nombre,
+    email:          u.email,
+    username:       u.username,
+    rol:            u.rol,
+    empresa_nombre: u.empresa.nombre,
+    plan:           u.empresa.plan.nombre,
+  };
 }
 
-export async function verifyPassword(password: string, hashed: string) {
+export function verifyPassword(password: string, hashed: string) {
   return bcrypt.compare(password, hashed);
 }
 
-export function signJwt(user: UserRecord) {
+export function signJwt(user: Pick<UsuarioModel, 'id' | 'empresaId' | 'rol' | 'username'>) {
   const payload = {
-    sub: user.id,
-    empresaId: user.empresa_id,
-    rol: user.rol,
-    username: user.username,
+    sub:       user.id,
+    empresaId: user.empresaId,
+    rol:       user.rol,
+    username:  user.username,
   };
-
   const secret = process.env.JWT_SECRET ?? 'secret';
-  return jwt.sign(
-    payload,
-    secret as jwt.Secret,
-    { expiresIn: process.env.JWT_EXPIRES_IN ?? '7d' } as jwt.SignOptions,
-  );
+  return jwt.sign(payload, secret as jwt.Secret, {
+    expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
+  } as jwt.SignOptions);
 }
 
 export function parseJwt(token: string) {

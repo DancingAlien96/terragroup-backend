@@ -1,74 +1,52 @@
-import pool from '../../config/database.js';
+import prisma from '../../config/prisma.js';
+import { EstadoCuenta } from '../../generated/prisma/enums.js';
 
-export interface PropietarioRow {
-  id: number;
-  empresa_id: number;
-  nombre: string;
-  telefono: string | null;
-  email: string | null;
-  direccion: string | null;
-  estado_cuenta: 'al_dia' | 'moroso' | 'vencido' | 'liquidado';
-  created_at: string;
-  updated_at: string;
+export function listPropietarios(empresaId: number) {
+  return prisma.propietario.findMany({
+    where:   { empresaId },
+    orderBy: { nombre: 'asc' },
+  });
 }
 
-export async function listPropietarios(empresaId: number): Promise<PropietarioRow[]> {
-  const [rows] = await pool.query(
-    `SELECT * FROM propietarios WHERE empresa_id = ? ORDER BY nombre ASC`,
-    [empresaId],
-  );
-  return rows as PropietarioRow[];
+export function getPropietario(id: number, empresaId: number) {
+  return prisma.propietario.findFirst({ where: { id, empresaId } });
 }
 
-export async function getPropietario(id: number, empresaId: number): Promise<PropietarioRow | null> {
-  const [rows] = await pool.query(
-    `SELECT * FROM propietarios WHERE id = ? AND empresa_id = ? LIMIT 1`,
-    [id, empresaId],
-  );
-  const results = rows as PropietarioRow[];
-  return results.length > 0 ? results[0] : null;
-}
-
-export async function createPropietario(
+export function createPropietario(
   empresaId: number,
   data: { nombre: string; telefono?: string; email?: string; direccion?: string },
-): Promise<PropietarioRow> {
-  const [result] = await pool.query(
-    `INSERT INTO propietarios (empresa_id, nombre, telefono, email, direccion)
-     VALUES (?, ?, ?, ?, ?)`,
-    [empresaId, data.nombre, data.telefono ?? null, data.email ?? null, data.direccion ?? null],
-  ) as any;
-  return (await getPropietario(result.insertId, empresaId))!;
+) {
+  return prisma.propietario.create({
+    data: {
+      empresaId,
+      nombre:    data.nombre,
+      telefono:  data.telefono ?? null,
+      email:     data.email ?? null,
+      direccion: data.direccion ?? null,
+    },
+  });
 }
 
 export async function updatePropietario(
   id: number,
   empresaId: number,
-  data: Partial<{ nombre: string; telefono: string; email: string; direccion: string; estado_cuenta: string }>,
-): Promise<PropietarioRow | null> {
-  const fields: string[] = [];
-  const values: unknown[] = [];
+  data: Partial<{ nombre: string; telefono: string; email: string; direccion: string; estado_cuenta: EstadoCuenta }>,
+) {
+  const propietario = await prisma.propietario.findFirst({ where: { id, empresaId } });
+  if (!propietario) return null;
 
-  if (data.nombre !== undefined)        { fields.push('nombre = ?');        values.push(data.nombre); }
-  if (data.telefono !== undefined)      { fields.push('telefono = ?');      values.push(data.telefono); }
-  if (data.email !== undefined)         { fields.push('email = ?');         values.push(data.email); }
-  if (data.direccion !== undefined)     { fields.push('direccion = ?');     values.push(data.direccion); }
-  if (data.estado_cuenta !== undefined) { fields.push('estado_cuenta = ?'); values.push(data.estado_cuenta); }
+  const payload: Record<string, unknown> = {};
+  if (data.nombre !== undefined)        payload.nombre       = data.nombre;
+  if (data.telefono !== undefined)      payload.telefono     = data.telefono;
+  if (data.email !== undefined)         payload.email        = data.email;
+  if (data.direccion !== undefined)     payload.direccion    = data.direccion;
+  if (data.estado_cuenta !== undefined) payload.estadoCuenta = data.estado_cuenta;
 
-  if (fields.length > 0) {
-    values.push(id, empresaId);
-    await pool.query(
-      `UPDATE propietarios SET ${fields.join(', ')} WHERE id = ? AND empresa_id = ?`,
-      values,
-    );
-  }
-  return getPropietario(id, empresaId);
+  if (Object.keys(payload).length === 0) return propietario;
+  return prisma.propietario.update({ where: { id }, data: payload });
 }
 
 export async function deletePropietario(id: number, empresaId: number): Promise<boolean> {
-  const [result] = await pool.query(
-    `DELETE FROM propietarios WHERE id = ? AND empresa_id = ?`,
-    [id, empresaId],
-  ) as any;
-  return result.affectedRows > 0;
+  const result = await prisma.propietario.deleteMany({ where: { id, empresaId } });
+  return result.count > 0;
 }

@@ -1,12 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import pool, { testConnection } from './config/database.js';
+import prisma from './config/prisma.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import usuariosRoutes from './modules/usuarios/usuarios.routes.js';
 import lotesRoutes from './modules/lotes/lotes.routes.js';
 import propietariosRoutes from './modules/propietarios/propietarios.routes.js';
-import contratosRoutes from './modules/contratos/contratos.routes.js';
 import pagosRoutes from './modules/pagos/pagos.routes.js';
 import vendedoresRoutes from './modules/vendedores/vendedores.routes.js';
 import notificacionesRoutes from './modules/notificaciones/notificaciones.routes.js';
@@ -14,7 +13,7 @@ import carteraRoutes from './modules/cartera/cartera.routes.js';
 import empresasRoutes from './modules/empresas/empresas.routes.js';
 import planesRoutes from './modules/planes/planes.routes.js';
 import statsRoutes from './modules/stats/stats.routes.js';
-import clientesRoutes from './modules/clientes/clientes.routes.js';
+import ventasRoutes from './modules/ventas/ventas.routes.js';
 import expedientesRoutes from './modules/expedientes/expedientes.routes.js';
 
 dotenv.config();
@@ -31,20 +30,19 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.use('/api/auth',          authRoutes);
-app.use('/api/usuarios',      usuariosRoutes);
-app.use('/api/lotes',         lotesRoutes);
-app.use('/api/propietarios',  propietariosRoutes);
-app.use('/api/contratos',     contratosRoutes);
-app.use('/api/pagos',         pagosRoutes);
-app.use('/api/vendedores',    vendedoresRoutes);
+app.use('/api/auth',           authRoutes);
+app.use('/api/usuarios',       usuariosRoutes);
+app.use('/api/lotes',          lotesRoutes);
+app.use('/api/propietarios',   propietariosRoutes);
+app.use('/api/pagos',          pagosRoutes);
+app.use('/api/vendedores',     vendedoresRoutes);
 app.use('/api/notificaciones', notificacionesRoutes);
-app.use('/api/cartera',       carteraRoutes);
-app.use('/api/empresas',      empresasRoutes);
-app.use('/api/planes',        planesRoutes);
-app.use('/api/stats',         statsRoutes);
-app.use('/api/clientes',      clientesRoutes);
-app.use('/api/expedientes',   expedientesRoutes);
+app.use('/api/cartera',        carteraRoutes);
+app.use('/api/empresas',       empresasRoutes);
+app.use('/api/planes',         planesRoutes);
+app.use('/api/stats',          statsRoutes);
+app.use('/api/ventas',         ventasRoutes);
+app.use('/api/expedientes',    expedientesRoutes);
 
 app.get('/', (_req, res) => {
   res.json({ success: true, message: 'TerraGroup backend running' });
@@ -52,19 +50,10 @@ app.get('/', (_req, res) => {
 
 app.get('/health', async (_req, res) => {
   try {
-    await testConnection();
+    await prisma.$queryRaw`SELECT 1`;
     res.json({ success: true, database: 'ok' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Database connection failed', error: String(error) });
-  }
-});
-
-app.get('/test-query', async (_req, res) => {
-  try {
-    const [rows] = await pool.query('SELECT 1 AS value');
-    res.json({ success: true, data: rows });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Query failed', error: String(error) });
   }
 });
 

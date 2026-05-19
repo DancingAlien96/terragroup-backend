@@ -1,175 +1,154 @@
-import pool from '../../config/database.js';
+import prisma from '../../config/prisma.js';
+import { EstadoCuenta, EstadoPago } from '../../generated/prisma/enums.js';
 
-export interface PagoRow {
-  id: number;
-  empresa_id: number;
-  contrato_id: number | null;
-  propietario_id: number | null;
-  cliente_id: number | null;
-  num_cuota: number | null;
-  monto: number;
-  fecha_pago: string | null;
-  fecha_vencimiento: string;
-  estado: 'pendiente' | 'pagado' | 'vencido';
-  metodo_pago: string | null;
-  referencia: string | null;
-  comprobante_url: string | null;
-  created_at: string;
-  updated_at: string;
+const includeDetalle = {
+  venta: {
+    include: {
+      propietario: { select: { nombre: true, email: true } },
+      lote:        { select: { clave: true } },
+    },
+  },
+} as const;
+
+function shape(p: any) {
+  return {
+    id:                p.id,
+    empresa_id:        p.empresaId,
+    venta_id:          p.ventaId,
+    cliente_id:        p.ventaId,        // alias legacy (UI espera cliente_id)
+    num_cuota:         p.numCuota,
+    monto:             Number(p.monto),
+    fecha_pago:        p.fechaPago,
+    fecha_vencimiento: p.fechaVencimiento,
+    estado:            p.estado,
+    metodo_pago:       p.metodoPago,
+    referencia:        p.referencia,
+    comprobante_url:   p.comprobanteUrl,
+    created_at:        p.createdAt,
+    updated_at:        p.updatedAt,
+    // Campos enriquecidos (desde venta/propietario/lote)
+    propietario_nombre:        p.venta?.propietario?.nombre ?? '—',
+    propietario_email:         p.venta?.propietario?.email ?? null,
+    lote_clave:                p.venta?.lote?.clave ?? '—',
+    cliente_nombre_comprador:  p.venta?.propietario?.nombre ?? null,
+    cliente_descripcion_lote:  p.venta?.descripcionLote ?? null,
+    cliente_num_cuotas:        p.venta?.numCuotas ?? null,
+  };
 }
 
-export interface PagoDetalle extends PagoRow {
-  propietario_nombre: string;
-  lote_clave: string;
-  cliente_nombre_comprador: string | null;
-  cliente_descripcion_lote: string | null;
-  cliente_num_cuotas: number | null;
+export async function listPagos(empresaId: number) {
+  const rows = await prisma.pago.findMany({
+    where:   { empresaId },
+    include: includeDetalle,
+    orderBy: { fechaVencimiento: 'desc' },
+  });
+  return rows.map(shape);
 }
 
-export async function listPagos(empresaId: number): Promise<PagoDetalle[]> {
-  const [rows] = await pool.query(
-    `SELECT pg.*,
-            COALESCE(p.nombre, '—') AS propietario_nombre,
-            COALESCE(l.clave, '\u2014')  AS lote_clave,
-            cl.nombre_comprador          AS cliente_nombre_comprador,
-            cl.descripcion_lote          AS cliente_descripcion_lote,
-            cl.num_cuotas                AS cliente_num_cuotas
-     FROM pagos pg
-     LEFT JOIN propietarios p ON p.id = pg.propietario_id
-     LEFT JOIN contratos c ON c.id = pg.contrato_id
-     LEFT JOIN lotes l ON l.id = c.lote_id
-     LEFT JOIN clientes cl ON cl.id = pg.cliente_id
-     WHERE pg.empresa_id = ?
-     ORDER BY pg.fecha_vencimiento DESC`,
-    [empresaId],
-  );
-  return rows as PagoDetalle[];
-}
-
-export async function getPago(id: number, empresaId: number): Promise<PagoDetalle | null> {
-  const [rows] = await pool.query(
-    `SELECT pg.*,
-            COALESCE(p.nombre, '—') AS propietario_nombre,
-            COALESCE(l.clave, '\u2014')  AS lote_clave,
-            cl.nombre_comprador          AS cliente_nombre_comprador,
-            cl.descripcion_lote          AS cliente_descripcion_lote,
-            cl.num_cuotas                AS cliente_num_cuotas
-     FROM pagos pg
-     LEFT JOIN propietarios p ON p.id = pg.propietario_id
-     LEFT JOIN contratos c ON c.id = pg.contrato_id
-     LEFT JOIN lotes l ON l.id = c.lote_id
-     LEFT JOIN clientes cl ON cl.id = pg.cliente_id
-     WHERE pg.id = ? AND pg.empresa_id = ? LIMIT 1`,
-    [id, empresaId],
-  );
-  const results = rows as PagoDetalle[];
-  return results.length > 0 ? results[0] : null;
+export async function getPago(id: number, empresaId: number) {
+  const row = await prisma.pago.findFirst({
+    where:   { id, empresaId },
+    include: includeDetalle,
+  });
+  return row ? shape(row) : null;
 }
 
 export async function createPago(
   empresaId: number,
   data: {
-    contrato_id?: number | null;
-    propietario_id?: number | null;
-    cliente_id?: number | null;
+    venta_id?: number; ventaId?: number;
+    cliente_id?: number;                  // alias legacy
     monto: number;
     fecha_vencimiento: string;
     fecha_pago?: string;
-    estado?: string;
+    estado?: EstadoPago;
     metodo_pago?: string;
     referencia?: string;
     comprobante_url?: string | null;
   },
-): Promise<PagoDetalle> {
-  // Auto-detect num_cuota for this cliente, offset by cuota_inicio
-  let numCuota: number | null = null;
-  if (data.cliente_id) {
-    const [countRows] = await pool.query(
-      `SELECT COUNT(*) as total FROM pagos WHERE cliente_id = ? AND empresa_id = ?`,
-      [data.cliente_id, empresaId],
-    ) as any;
-    const [clienteRows] = await pool.query(
-      `SELECT cuota_inicio FROM clientes WHERE id = ? AND empresa_id = ? LIMIT 1`,
-      [data.cliente_id, empresaId],
-    ) as any;
-    const cuotaInicio: number = clienteRows[0]?.cuota_inicio ?? 1;
-    numCuota = (countRows[0].total as number) + cuotaInicio;
-  }
+) {
+  const ventaId = data.ventaId ?? data.venta_id ?? data.cliente_id;
+  if (!ventaId) throw new Error('venta_id es requerido');
 
-  const [result] = await pool.query(
-    `INSERT INTO pagos
-       (empresa_id, contrato_id, propietario_id, cliente_id, num_cuota,
-        monto, fecha_vencimiento, fecha_pago, estado, metodo_pago, referencia, comprobante_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      empresaId, data.contrato_id ?? null, data.propietario_id ?? null,
-      data.cliente_id ?? null, numCuota,
-      data.monto, data.fecha_vencimiento, data.fecha_pago ?? null,
-      'pagado', data.metodo_pago ?? null, data.referencia ?? null, data.comprobante_url ?? null,
-    ],
-  ) as any;
-  return (await getPago(result.insertId, empresaId))!;
+  // Auto-cuota: siguiente número de cuota después de los pagos existentes, offset por cuotaInicio
+  const [pagosCount, venta] = await Promise.all([
+    prisma.pago.count({ where: { ventaId, empresaId } }),
+    prisma.venta.findUnique({ where: { id: ventaId }, select: { cuotaInicio: true } }),
+  ]);
+  const numCuota = pagosCount + (venta?.cuotaInicio ?? 1);
+
+  const created = await prisma.pago.create({
+    data: {
+      empresaId,
+      ventaId,
+      numCuota,
+      monto:            data.monto,
+      fechaVencimiento: new Date(data.fecha_vencimiento),
+      fechaPago:        data.fecha_pago ? new Date(data.fecha_pago) : null,
+      estado:           data.estado ?? EstadoPago.pagado,
+      metodoPago:       data.metodo_pago ?? null,
+      referencia:       data.referencia ?? null,
+      comprobanteUrl:   data.comprobante_url ?? null,
+    },
+  });
+  return (await getPago(created.id, empresaId))!;
 }
 
 export async function updatePago(
   id: number,
   empresaId: number,
   data: Partial<{
-    cliente_id: number | null;
     monto: number; fecha_vencimiento: string; fecha_pago: string;
-    estado: string; metodo_pago: string; referencia: string; comprobante_url: string | null;
+    estado: EstadoPago; metodo_pago: string; referencia: string; comprobante_url: string | null;
   }>,
-): Promise<PagoDetalle | null> {
-  const fields: string[] = [];
-  const values: unknown[] = [];
+) {
+  const existing = await prisma.pago.findFirst({ where: { id, empresaId } });
+  if (!existing) return null;
 
-  if (data.cliente_id !== undefined)        { fields.push('cliente_id = ?');        values.push(data.cliente_id); }
-  if (data.monto !== undefined)             { fields.push('monto = ?');             values.push(data.monto); }
-  if (data.fecha_vencimiento !== undefined) { fields.push('fecha_vencimiento = ?'); values.push(data.fecha_vencimiento); }
-  if (data.fecha_pago !== undefined)        { fields.push('fecha_pago = ?');        values.push(data.fecha_pago); }
-  if (data.estado !== undefined)            { fields.push('estado = ?');            values.push(data.estado); }
-  if (data.metodo_pago !== undefined)       { fields.push('metodo_pago = ?');       values.push(data.metodo_pago); }
-  if (data.referencia !== undefined)        { fields.push('referencia = ?');        values.push(data.referencia); }
-  if (data.comprobante_url !== undefined)   { fields.push('comprobante_url = ?');   values.push(data.comprobante_url); }
+  const payload: Record<string, unknown> = {};
+  if (data.monto !== undefined)             payload.monto            = data.monto;
+  if (data.fecha_vencimiento !== undefined) payload.fechaVencimiento = new Date(data.fecha_vencimiento);
+  if (data.fecha_pago !== undefined)        payload.fechaPago        = new Date(data.fecha_pago);
+  if (data.estado !== undefined)            payload.estado           = data.estado;
+  if (data.metodo_pago !== undefined)       payload.metodoPago       = data.metodo_pago;
+  if (data.referencia !== undefined)        payload.referencia       = data.referencia;
+  if (data.comprobante_url !== undefined)   payload.comprobanteUrl   = data.comprobante_url;
 
-  if (fields.length > 0) {
-    values.push(id, empresaId);
-    await pool.query(
-      `UPDATE pagos SET ${fields.join(', ')} WHERE id = ? AND empresa_id = ?`,
-      values,
-    );
+  if (Object.keys(payload).length > 0) {
+    await prisma.pago.update({ where: { id }, data: payload });
   }
 
-  // Auto-update propietario estado_cuenta based on payments
-  const pago = await getPago(id, empresaId);
-  if (pago) {
-    const [stats] = await pool.query(
-      `SELECT
-         SUM(CASE WHEN estado = 'vencido' THEN 1 ELSE 0 END) AS vencidos,
-         SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END) AS pendientes,
-         SUM(CASE WHEN estado = 'pagado' THEN 1 ELSE 0 END) AS pagados,
-         COUNT(*) AS total
-       FROM pagos WHERE propietario_id = ? AND empresa_id = ?`,
-      [pago.propietario_id, empresaId],
-    ) as any;
-    const s = (stats as any[])[0];
-    let estadoCuenta = 'al_dia';
-    if (s.vencidos > 2) estadoCuenta = 'vencido';
-    else if (s.vencidos > 0) estadoCuenta = 'moroso';
-    else if (s.pagados === s.total && s.total > 0) estadoCuenta = 'liquidado';
-    await pool.query(
-      `UPDATE propietarios SET estado_cuenta = ? WHERE id = ? AND empresa_id = ?`,
-      [estadoCuenta, pago.propietario_id, empresaId],
-    );
+  // Actualizar estado_cuenta del propietario asociado, basado en los pagos de TODAS sus ventas
+  const venta = await prisma.venta.findUnique({
+    where:  { id: existing.ventaId },
+    select: { propietarioId: true },
+  });
+  if (venta) {
+    const stats = await prisma.pago.groupBy({
+      by: ['estado'],
+      where: {
+        empresaId,
+        venta: { propietarioId: venta.propietarioId },
+      },
+      _count: true,
+    });
+    const counts = { pagado: 0, pendiente: 0, vencido: 0 };
+    for (const s of stats) counts[s.estado] = s._count;
+    const total = counts.pagado + counts.pendiente + counts.vencido;
+    let estadoCuenta: EstadoCuenta = EstadoCuenta.al_dia;
+    if (counts.vencido > 2) estadoCuenta = EstadoCuenta.vencido;
+    else if (counts.vencido > 0) estadoCuenta = EstadoCuenta.moroso;
+    else if (counts.pagado === total && total > 0) estadoCuenta = EstadoCuenta.liquidado;
+    await prisma.propietario.update({
+      where: { id: venta.propietarioId },
+      data:  { estadoCuenta },
+    });
   }
 
-  return pago;
+  return getPago(id, empresaId);
 }
 
 export async function deletePago(id: number, empresaId: number): Promise<boolean> {
-  const [result] = await pool.query(
-    `DELETE FROM pagos WHERE id = ? AND empresa_id = ?`,
-    [id, empresaId],
-  ) as any;
-  return result.affectedRows > 0;
+  const result = await prisma.pago.deleteMany({ where: { id, empresaId } });
+  return result.count > 0;
 }

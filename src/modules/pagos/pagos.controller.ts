@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import * as svc from './pagos.service.js';
-import pool from '../../config/database.js';
+import prisma from '../../config/prisma.js';
 import { sendPagoConfirmado } from '../../config/mailer.js';
 
 export async function list(req: Request, res: Response) {
@@ -18,37 +18,40 @@ export async function get(req: Request, res: Response) {
 }
 
 export async function create(req: Request, res: Response) {
-  const { monto } = req.body;
-  if (!monto) {
+  if (!req.body.monto) {
     return res.status(400).json({ success: false, message: 'Faltan campos requeridos' });
   }
   try {
     const item = await svc.createPago(req.user!.empresaId, req.body);
 
-    // Send confirmation email if the cliente has an email registered (fire-and-forget)
-    if (item.cliente_id) {
+    // Enviar correo de confirmación (fire-and-forget) si el propietario tiene email
+    if (item.venta_id) {
       (async () => {
         try {
-          const [rows] = await pool.query(
-            `SELECT email, nombre_comprador, descripcion_lote FROM clientes WHERE id = ? LIMIT 1`,
-            [item.cliente_id],
-          ) as any;
-          const cliente = (rows as any[])[0];
-          if (cliente?.email) {
+          const venta = await prisma.venta.findUnique({
+            where:  { id: item.venta_id! },
+            select: {
+              propietario:     { select: { nombre: true, email: true } },
+              descripcionLote: true,
+              lote:            { select: { clave: true } },
+            },
+          });
+          const email = venta?.propietario?.email;
+          if (email) {
             const fecha = item.fecha_pago
-              ? new Date(item.fecha_pago + 'T12:00:00').toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' })
+              ? new Date(item.fecha_pago).toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' })
               : new Date().toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' });
             await sendPagoConfirmado({
-              to:            cliente.email,
-              clienteNombre: cliente.nombre_comprador,
-              lote:          cliente.descripcion_lote ?? 'Sin lote',
+              to:            email,
+              clienteNombre: venta!.propietario.nombre,
+              lote:          venta!.descripcionLote ?? venta!.lote?.clave ?? 'Sin lote',
               monto:         Number(item.monto),
               numCuota:      item.num_cuota,
               fecha,
               referencia:    item.referencia,
             });
           }
-        } catch { /* silencioso — no interrumpir si falla el correo */ }
+        } catch { /* silencioso */ }
       })();
     }
 

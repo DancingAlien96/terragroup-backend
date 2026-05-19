@@ -1,60 +1,23 @@
 /**
- * Job diario: Recordatorio de registro de pagos
+ * Job diario: Recordatorio de pagos en mora
  *
- * Se ejecuta cada día a las 08:00 AM.
- * Calcula qué clientes tienen cuotas vencidas sin pago registrado
- * y envía un resumen al administrador para que verifique si
- * recibió algún pago físico que aún no ha sido capturado en el sistema.
+ * Se ejecuta cada día a las 08:00 AM (zona America/Guatemala).
+ * Calcula qué ventas tienen cuotas vencidas sin pago y envía un resumen
+ * al administrador del sistema (MAIL_USER) para que verifique pagos físicos
+ * aún no capturados.
+ *
+ * NOTA multi-tenant: el reporte mezcla todas las empresas, ya que el destino
+ * es el admin del sistema (no los admins de cada tenant).
  */
 
 import cron from 'node-cron';
-import pool from '../config/database.js';
+import prisma from '../config/prisma.js';
 import transporter from '../config/mailer.js';
 
-interface ClienteRow {
-  id: number;
-  empresa_id: number;
-  nombre_comprador: string;
-  descripcion_lote: string | null;
-  num_cuotas: number;
-  valor_cuota: number;
-  cuota_inicio: number;
-  fecha_deposito: string;
-}
-
-interface PagoCount {
-  cliente_id: number;
-  total: number;
-}
-
-function calcularCuotasVencidas(cliente: ClienteRow, pagosCount: number, today: Date): number {
-  const deposito = new Date(cliente.fecha_deposito);
-  const cuotasPrevias = Math.max(0, (cliente.cuota_inicio ?? 1) - 1);
-  let vencidas = 0;
-  for (let i = 1; i <= cliente.num_cuotas; i++) {
-    const due = new Date(deposito);
-    due.setMonth(due.getMonth() + i);
-    if (due <= today) vencidas++;
-    else break;
-  }
-  return Math.max(0, vencidas - pagosCount - cuotasPrevias);
-}
-
-function diasDesde(cliente: ClienteRow, pagosCount: number, today: Date): number {
-  const deposito = new Date(cliente.fecha_deposito);
-  const cuotasPrevias = Math.max(0, (cliente.cuota_inicio ?? 1) - 1);
-  // Fecha de la cuota más antigua sin pagar
-  let cuotasSuperadas = 0;
-  for (let i = 1; i <= cliente.num_cuotas; i++) {
-    const due = new Date(deposito);
-    due.setMonth(due.getMonth() + i);
-    if (due > today) break;
-    cuotasSuperadas++;
-    if (cuotasSuperadas > pagosCount + cuotasPrevias) {
-      return Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
-    }
-  }
-  return 0;
+function addMonths(d: Date, months: number): Date {
+  const r = new Date(d);
+  r.setMonth(r.getMonth() + months);
+  return r;
 }
 
 function estadoMora(dias: number): { label: string; color: string } {
@@ -72,44 +35,54 @@ async function ejecutarRecordatorio() {
   today.setHours(23, 59, 59, 0);
 
   try {
-    // 1. Traer todos los clientes activos
-    const [clienteRows] = await pool.query(
-      `SELECT id, empresa_id, nombre_comprador, descripcion_lote, num_cuotas, valor_cuota, cuota_inicio, fecha_deposito
-       FROM clientes WHERE activo = TRUE`,
-    ) as [ClienteRow[], any];
+    const ventas = await prisma.venta.findMany({
+      where: { estado: { not: 'cancelado' } },
+      include: {
+        propietario: { select: { nombre: true } },
+        lote:        { select: { clave: true } },
+        pagos:       { select: { numCuota: true } },
+      },
+    });
+    if (ventas.length === 0) return;
 
-    if (clienteRows.length === 0) return;
-
-    // 2. Contar pagos por cliente
-    const [pagoRows] = await pool.query(
-      `SELECT cliente_id, COUNT(*) AS total FROM pagos WHERE cliente_id IS NOT NULL GROUP BY cliente_id`,
-    ) as [PagoCount[], any];
-
-    const pagoMap = new Map<number, number>();
-    for (const p of pagoRows) pagoMap.set(p.cliente_id, Number(p.total));
-
-    // 3. Calcular mora
-    type MoraCliente = {
+    interface MoraCliente {
       nombre: string;
       lote: string;
       cuotasVencidas: number;
       montoVencido: number;
       dias: number;
       esNuevoHoy: boolean;
-    };
+    }
     const enMora: MoraCliente[] = [];
 
-    for (const c of clienteRows) {
-      const pagos = pagoMap.get(c.id) ?? 0;
-      const cuotasVencidas = calcularCuotasVencidas(c, pagos, today);
+    for (const v of ventas) {
+      const numCuotas   = v.numCuotas;
+      const valorCuota  = Number(v.valorCuota);
+      const cuotaInicio = v.cuotaInicio ?? 1;
+      if (numCuotas <= 0 || valorCuota <= 0) continue;
+
+      const fechaInicio = new Date(v.fechaInicio);
+
+      const fechasVencidas: Date[] = [];
+      for (let i = 1; i <= numCuotas; i++) {
+        const due = addMonths(fechaInicio, i);
+        if (due <= today) fechasVencidas.push(due);
+        else break;
+      }
+      const cuotasPrevias = Math.max(0, cuotaInicio - 1);
+      const cuotasVencidas = fechasVencidas.length - v.pagos.length - cuotasPrevias;
       if (cuotasVencidas <= 0) continue;
 
-      const dias = diasDesde(c, pagos, today);
+      const cuotaMasAntigua = fechasVencidas[v.pagos.length + cuotasPrevias];
+      const dias = cuotaMasAntigua
+        ? Math.floor((today.getTime() - cuotaMasAntigua.getTime()) / 86_400_000)
+        : 0;
+
       enMora.push({
-        nombre:         c.nombre_comprador,
-        lote:           c.descripcion_lote ?? '—',
+        nombre:         v.propietario.nombre,
+        lote:           v.descripcionLote ?? v.lote?.clave ?? '—',
         cuotasVencidas,
-        montoVencido:   cuotasVencidas * Number(c.valor_cuota),
+        montoVencido:   cuotasVencidas * valorCuota,
         dias,
         esNuevoHoy:     dias <= 1,
       });
@@ -120,14 +93,11 @@ async function ejecutarRecordatorio() {
       return;
     }
 
-    // Ordenar: primero los de hoy, luego por días desc
     enMora.sort((a, b) => (b.esNuevoHoy ? 1 : 0) - (a.esNuevoHoy ? 1 : 0) || b.dias - a.dias);
-
     const totalMora = enMora.reduce((s, c) => s + c.montoVencido, 0);
-    const nuevosHoy = enMora.filter(c => c.esNuevoHoy);
+    const nuevosHoy = enMora.filter((c) => c.esNuevoHoy);
 
-    // 4. Construir HTML del correo
-    const filas = enMora.map(c => {
+    const filas = enMora.map((c) => {
       const { label, color } = estadoMora(c.dias);
       const bgRow = c.esNuevoHoy ? 'background:#fffbeb;' : '';
       return `
@@ -176,7 +146,6 @@ async function ejecutarRecordatorio() {
 
           ${alertaNuevos}
 
-          <!-- KPIs -->
           <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
             <tr>
               <td width="33%" style="padding:12px;background:#fef2f2;border-radius:8px;text-align:center;">
@@ -196,7 +165,6 @@ async function ejecutarRecordatorio() {
             </tr>
           </table>
 
-          <!-- Tabla -->
           <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-size:13px;">
             <thead>
               <tr style="background:#f9fafb;">
@@ -237,7 +205,6 @@ async function ejecutarRecordatorio() {
 }
 
 export function iniciarJobRecordatorioPagos() {
-  // Todos los días a las 08:00 AM
   cron.schedule('0 8 * * *', () => {
     console.log('[cron] Ejecutando recordatorio de pagos...');
     ejecutarRecordatorio();

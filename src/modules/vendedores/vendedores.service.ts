@@ -1,164 +1,134 @@
-import pool from '../../config/database.js';
+import prisma from '../../config/prisma.js';
 
-export interface VendedorRow {
-  id: number;
-  empresa_id: number;
-  nombre: string;
-  nit: string | null;
-  telefono: string | null;
-  email: string | null;
-  dpi: string | null;
-  direccion: string | null;
-  activo: boolean;
-  total_ventas: number;
-  total_comisiones: number;
+/* ── Vendedores ───────────────────────────────────────────── */
+
+export async function listVendedores(empresaId: number) {
+  const vendedores = await prisma.vendedor.findMany({
+    where:   { empresaId },
+    include: { comisiones: { select: { montoComision: true } } },
+    orderBy: { nombre: 'asc' },
+  });
+  return vendedores.map((v) => {
+    const totalComisiones = v.comisiones.reduce((s, c) => s + Number(c.montoComision), 0);
+    const { comisiones: _omit, ...rest } = v;
+    return {
+      ...rest,
+      total_ventas:     v.comisiones.length,
+      total_comisiones: totalComisiones,
+    };
+  });
 }
 
-export interface ComisionRow {
-  id: number;
-  empresa_id: number;
-  vendedor_id: number;
-  vendedor_nombre: string;
-  descripcion_lote: string;
-  valor_lote: number;
-  porcentaje: number;
-  monto_comision: number;
-  fecha_venta: string;
-  created_at: string;
-}
-
-export async function listVendedores(empresaId: number): Promise<VendedorRow[]> {
-  const [rows] = await pool.query(
-    `SELECT v.*,
-       COUNT(c.id) AS total_ventas,
-       COALESCE(SUM(c.monto_comision), 0) AS total_comisiones
-     FROM vendedores v
-     LEFT JOIN comisiones c ON c.vendedor_id = v.id AND c.empresa_id = v.empresa_id
-     WHERE v.empresa_id = ?
-     GROUP BY v.id
-     ORDER BY v.nombre ASC`,
-    [empresaId],
-  );
-  return rows as VendedorRow[];
-}
-
-export async function getVendedor(id: number, empresaId: number): Promise<VendedorRow | null> {
-  const [rows] = await pool.query(
-    `SELECT v.*,
-       COUNT(c.id) AS total_ventas,
-       COALESCE(SUM(c.monto_comision), 0) AS total_comisiones
-     FROM vendedores v
-     LEFT JOIN comisiones c ON c.vendedor_id = v.id AND c.empresa_id = v.empresa_id
-     WHERE v.id = ? AND v.empresa_id = ?
-     GROUP BY v.id`,
-    [id, empresaId],
-  );
-  return (rows as VendedorRow[])[0] ?? null;
+export async function getVendedor(id: number, empresaId: number) {
+  const v = await prisma.vendedor.findFirst({
+    where:   { id, empresaId },
+    include: { comisiones: { select: { montoComision: true } } },
+  });
+  if (!v) return null;
+  const totalComisiones = v.comisiones.reduce((s, c) => s + Number(c.montoComision), 0);
+  const { comisiones: _omit, ...rest } = v;
+  return { ...rest, total_ventas: v.comisiones.length, total_comisiones: totalComisiones };
 }
 
 export async function createVendedor(
   empresaId: number,
   data: { nombre: string; nit?: string | null; telefono?: string | null; email?: string | null; dpi?: string | null; direccion?: string | null },
-): Promise<VendedorRow> {
-  const [result] = await pool.query(
-    `INSERT INTO vendedores (empresa_id, nombre, nit, telefono, email, dpi, direccion) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [empresaId, data.nombre, data.nit ?? null, data.telefono ?? null, data.email ?? null, data.dpi ?? null, data.direccion ?? null],
-  ) as any;
-  return (await getVendedor(result.insertId, empresaId))!;
+) {
+  const created = await prisma.vendedor.create({
+    data: {
+      empresaId,
+      nombre:    data.nombre,
+      nit:       data.nit ?? null,
+      telefono:  data.telefono ?? null,
+      email:     data.email ?? null,
+      dpi:       data.dpi ?? null,
+      direccion: data.direccion ?? null,
+    },
+  });
+  return getVendedor(created.id, empresaId);
 }
 
 export async function updateVendedor(
   id: number,
   empresaId: number,
   data: Partial<{ nombre: string; nit: string | null; telefono: string | null; email: string | null; dpi: string | null; direccion: string | null; activo: boolean }>,
-): Promise<VendedorRow | null> {
-  const fields: string[] = [];
-  const values: any[] = [];
-  if (data.nombre !== undefined)    { fields.push('nombre = ?');    values.push(data.nombre); }
-  if (data.nit !== undefined)       { fields.push('nit = ?');       values.push(data.nit); }
-  if (data.telefono !== undefined)  { fields.push('telefono = ?');  values.push(data.telefono); }
-  if (data.email !== undefined)     { fields.push('email = ?');     values.push(data.email); }
-  if (data.dpi !== undefined)       { fields.push('dpi = ?');       values.push(data.dpi); }
-  if (data.direccion !== undefined) { fields.push('direccion = ?'); values.push(data.direccion); }
-  if (data.activo !== undefined)    { fields.push('activo = ?');    values.push(data.activo); }
-  if (!fields.length) return getVendedor(id, empresaId);
-  await pool.query(`UPDATE vendedores SET ${fields.join(', ')} WHERE id = ? AND empresa_id = ?`, [...values, id, empresaId]);
+) {
+  const vendedor = await prisma.vendedor.findFirst({ where: { id, empresaId } });
+  if (!vendedor) return null;
+
+  const payload: Record<string, unknown> = {};
+  for (const key of ['nombre', 'nit', 'telefono', 'email', 'dpi', 'direccion', 'activo'] as const) {
+    if (data[key] !== undefined) payload[key] = data[key];
+  }
+  if (Object.keys(payload).length === 0) return getVendedor(id, empresaId);
+  await prisma.vendedor.update({ where: { id }, data: payload });
   return getVendedor(id, empresaId);
 }
 
 export async function deleteVendedor(id: number, empresaId: number): Promise<boolean> {
-  const [result] = await pool.query(`DELETE FROM vendedores WHERE id = ? AND empresa_id = ?`, [id, empresaId]) as any;
-  return result.affectedRows > 0;
+  const result = await prisma.vendedor.deleteMany({ where: { id, empresaId } });
+  return result.count > 0;
 }
 
-export async function listComisiones(vendedorId: number, empresaId: number): Promise<ComisionRow[]> {
-  const [rows] = await pool.query(
-    `SELECT c.*, v.nombre AS vendedor_nombre
-     FROM comisiones c
-     JOIN vendedores v ON v.id = c.vendedor_id
-     WHERE c.vendedor_id = ? AND c.empresa_id = ?
-     ORDER BY c.fecha_venta DESC`,
-    [vendedorId, empresaId],
-  );
-  return rows as ComisionRow[];
+/* ── Comisiones ───────────────────────────────────────────── */
+
+export async function listComisiones(vendedorId: number, empresaId: number) {
+  const rows = await prisma.comision.findMany({
+    where:   { vendedorId, empresaId },
+    include: { vendedor: { select: { nombre: true } } },
+    orderBy: { fechaVenta: 'desc' },
+  });
+  return rows.map((c) => ({ ...c, vendedor_nombre: c.vendedor.nombre }));
 }
 
 export async function createComision(
   empresaId: number,
   vendedorId: number,
   data: { descripcion_lote: string; valor_lote: number; porcentaje: number; fecha_venta: string },
-): Promise<ComisionRow> {
-  const monto = parseFloat((data.valor_lote * data.porcentaje / 100).toFixed(2));
-  const [result] = await pool.query(
-    `INSERT INTO comisiones (empresa_id, vendedor_id, descripcion_lote, valor_lote, porcentaje, monto_comision, fecha_venta) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [empresaId, vendedorId, data.descripcion_lote, data.valor_lote, data.porcentaje, monto, data.fecha_venta],
-  ) as any;
-  const [rows] = await pool.query(
-    `SELECT c.*, v.nombre AS vendedor_nombre FROM comisiones c JOIN vendedores v ON v.id = c.vendedor_id WHERE c.id = ?`,
-    [result.insertId],
-  );
-  return (rows as ComisionRow[])[0];
+) {
+  const monto = Number((data.valor_lote * data.porcentaje / 100).toFixed(2));
+  const created = await prisma.comision.create({
+    data: {
+      empresaId,
+      vendedorId,
+      descripcionLote: data.descripcion_lote,
+      valorLote:       data.valor_lote,
+      porcentaje:      data.porcentaje,
+      montoComision:   monto,
+      fechaVenta:      new Date(data.fecha_venta),
+    },
+    include: { vendedor: { select: { nombre: true } } },
+  });
+  return { ...created, vendedor_nombre: created.vendedor.nombre };
 }
 
 export async function updateComision(
   id: number,
   empresaId: number,
   data: { descripcion_lote?: string; valor_lote?: number; porcentaje?: number; fecha_venta?: string },
-): Promise<ComisionRow | null> {
-  // Fetch current row to recalculate if needed
-  const [curr] = await pool.query(`SELECT * FROM comisiones WHERE id = ? AND empresa_id = ?`, [id, empresaId]) as any;
-  const current = (curr as any[])[0];
+) {
+  const current = await prisma.comision.findFirst({ where: { id, empresaId } });
   if (!current) return null;
-  const valorLote  = data.valor_lote  ?? Number(current.valor_lote);
+
+  const valorLote  = data.valor_lote  ?? Number(current.valorLote);
   const porcentaje = data.porcentaje  ?? Number(current.porcentaje);
-  const monto = parseFloat((valorLote * porcentaje / 100).toFixed(2));
-  await pool.query(
-    `UPDATE comisiones SET
-       descripcion_lote = ?,
-       valor_lote       = ?,
-       porcentaje       = ?,
-       monto_comision   = ?,
-       fecha_venta      = ?
-     WHERE id = ? AND empresa_id = ?`,
-    [
-      data.descripcion_lote ?? current.descripcion_lote,
+  const monto      = Number((valorLote * porcentaje / 100).toFixed(2));
+
+  const updated = await prisma.comision.update({
+    where: { id },
+    data: {
+      descripcionLote: data.descripcion_lote ?? current.descripcionLote,
       valorLote,
       porcentaje,
-      monto,
-      data.fecha_venta ?? current.fecha_venta,
-      id,
-      empresaId,
-    ],
-  );
-  const [rows] = await pool.query(
-    `SELECT c.*, v.nombre AS vendedor_nombre FROM comisiones c JOIN vendedores v ON v.id = c.vendedor_id WHERE c.id = ?`,
-    [id],
-  );
-  return (rows as ComisionRow[])[0] ?? null;
+      montoComision: monto,
+      fechaVenta:    data.fecha_venta ? new Date(data.fecha_venta) : current.fechaVenta,
+    },
+    include: { vendedor: { select: { nombre: true } } },
+  });
+  return { ...updated, vendedor_nombre: updated.vendedor.nombre };
 }
 
 export async function deleteComision(id: number, empresaId: number): Promise<boolean> {
-  const [result] = await pool.query(`DELETE FROM comisiones WHERE id = ? AND empresa_id = ?`, [id, empresaId]) as any;
-  return result.affectedRows > 0;
+  const result = await prisma.comision.deleteMany({ where: { id, empresaId } });
+  return result.count > 0;
 }
-
