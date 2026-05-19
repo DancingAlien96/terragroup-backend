@@ -28,8 +28,11 @@ services:
       DB_USER: ${DB_USER:-root}
       DB_PASS: ${DB_PASS:-rootpassword}
       DB_NAME: ${DB_NAME:-terragroup}
+      # Construida desde DB_*; usada por Prisma migrate + adapter
+      DATABASE_URL: mysql://${DB_USER:-root}:${DB_PASS:-rootpassword}@db:3306/${DB_NAME:-terragroup}
       PORT: 4000
       JWT_SECRET: ${JWT_SECRET:-terragroup_secret_2024}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       MAIL_USER: ${MAIL_USER}
       MAIL_PASS: ${MAIL_PASS}
       MAIL_FROM: ${MAIL_FROM}
