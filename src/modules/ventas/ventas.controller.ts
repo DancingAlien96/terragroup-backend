@@ -19,6 +19,7 @@ function shape(v: any) {
     precio_neto:       Number(v.precioTotal),
     precio_total:      Number(v.precioTotal),
     enganche:          Number(v.enganche),
+    tasa_anual:        Number(v.tasaAnual),
     num_cuotas:        v.numCuotas,
     valor_cuota:       Number(v.valorCuota),
     cuota_inicio:      v.cuotaInicio,
@@ -28,6 +29,7 @@ function shape(v: any) {
     num_transferencia: v.numTransferencia,
     metodo_pago:       v.metodoPago,
     entidad_bancaria:  v.entidadBancaria,
+    comprobante_enganche_url: v.comprobanteEngancheUrl,
     estado:            v.estado,
     activo:            v.estado !== 'cancelado',
     created_at:        v.createdAt,
@@ -67,6 +69,7 @@ export async function create(req: Request, res: Response) {
     vendedorId:       b.vendedorId ?? b.vendedor_id ?? null,
     precioTotal:      b.precioTotal ?? b.precio_total ?? b.precio_neto,
     enganche:         b.enganche,
+    tasaAnual:        b.tasaAnual ?? b.tasa_anual,
     numCuotas:        b.numCuotas ?? b.num_cuotas,
     valorCuota:       b.valorCuota ?? b.valor_cuota,
     cuotaInicio:      b.cuotaInicio ?? b.cuota_inicio,
@@ -75,6 +78,7 @@ export async function create(req: Request, res: Response) {
     numTransferencia: b.numTransferencia ?? b.num_transferencia ?? null,
     metodoPago:       b.metodoPago ?? b.metodo_pago ?? null,
     entidadBancaria:  b.entidadBancaria ?? b.entidad_bancaria ?? null,
+    comprobanteEngancheUrl: b.comprobanteEngancheUrl ?? b.comprobante_enganche_url ?? null,
   };
 
   if (!input.precioTotal || !input.fechaInicio) {
@@ -108,7 +112,30 @@ export async function create(req: Request, res: Response) {
 
 export async function update(req: Request, res: Response) {
   try {
-    const item = await svc.updateVenta(Number(req.params.id), req.user!.empresaId, req.body);
+    const b = req.body;
+    const data = {
+      ...b,
+      // Propietario (legacy: nombre_comprador / email / telefono vienen del form de cliente)
+      ...(b.nombre_comprador !== undefined && { propietarioNombre:   b.nombre_comprador }),
+      ...(b.email            !== undefined && { propietarioEmail:    b.email || null }),
+      ...(b.telefono         !== undefined && { propietarioTelefono: b.telefono || null }),
+      // Venta
+      ...(b.tasa_anual       !== undefined && { tasaAnual:   b.tasa_anual  }),
+      ...(b.precio_total     !== undefined && { precioTotal: b.precio_total }),
+      ...(b.precio_neto      !== undefined && { precioTotal: b.precio_neto }),
+      ...(b.descripcion_lote !== undefined && { descripcionLote: b.descripcion_lote || null }),
+      ...(b.num_cuotas       !== undefined && { numCuotas:   b.num_cuotas  }),
+      ...(b.valor_cuota      !== undefined && { valorCuota:  b.valor_cuota }),
+      ...(b.cuota_inicio     !== undefined && { cuotaInicio: b.cuota_inicio }),
+      ...(b.fecha_inicio     !== undefined && { fechaInicio: b.fecha_inicio }),
+      ...(b.fecha_deposito   !== undefined && { fechaInicio: b.fecha_deposito }),
+      ...(b.fecha_fin        !== undefined && { fechaFin:    b.fecha_fin   }),
+      ...(b.num_transferencia !== undefined && { numTransferencia: b.num_transferencia || null }),
+      ...(b.metodo_pago      !== undefined && { metodoPago:  b.metodo_pago || null }),
+      ...(b.entidad_bancaria !== undefined && { entidadBancaria: b.entidad_bancaria || null }),
+      ...(b.comprobante_enganche_url !== undefined && { comprobanteEngancheUrl: b.comprobante_enganche_url || null }),
+    };
+    const item = await svc.updateVenta(Number(req.params.id), req.user!.empresaId, data);
     if (!item) return res.status(404).json({ success: false, message: 'Venta no encontrada' });
     return res.json({ success: true, data: shape(item) });
   } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }

@@ -23,6 +23,7 @@ function shape(p: any) {
     estado:            p.estado,
     metodo_pago:       p.metodoPago,
     referencia:        p.referencia,
+    descripcion:       p.descripcion,
     comprobante_url:   p.comprobanteUrl,
     created_at:        p.createdAt,
     updated_at:        p.updatedAt,
@@ -64,6 +65,7 @@ export async function createPago(
     estado?: EstadoPago;
     metodo_pago?: string;
     referencia?: string;
+    descripcion?: string | null;
     comprobante_url?: string | null;
   },
 ) {
@@ -88,6 +90,7 @@ export async function createPago(
       estado:           data.estado ?? EstadoPago.pagado,
       metodoPago:       data.metodo_pago ?? null,
       referencia:       data.referencia ?? null,
+      descripcion:      data.descripcion ?? null,
       comprobanteUrl:   data.comprobante_url ?? null,
     },
   });
@@ -99,7 +102,8 @@ export async function updatePago(
   empresaId: number,
   data: Partial<{
     monto: number; fecha_vencimiento: string; fecha_pago: string;
-    estado: EstadoPago; metodo_pago: string; referencia: string; comprobante_url: string | null;
+    estado: EstadoPago; metodo_pago: string; referencia: string;
+    descripcion: string | null; comprobante_url: string | null;
   }>,
 ) {
   const existing = await prisma.pago.findFirst({ where: { id, empresaId } });
@@ -112,6 +116,7 @@ export async function updatePago(
   if (data.estado !== undefined)            payload.estado           = data.estado;
   if (data.metodo_pago !== undefined)       payload.metodoPago       = data.metodo_pago;
   if (data.referencia !== undefined)        payload.referencia       = data.referencia;
+  if (data.descripcion !== undefined)       payload.descripcion      = data.descripcion;
   if (data.comprobante_url !== undefined)   payload.comprobanteUrl   = data.comprobante_url;
 
   if (Object.keys(payload).length > 0) {

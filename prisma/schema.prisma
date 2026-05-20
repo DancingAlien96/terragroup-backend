@@ -89,6 +89,7 @@ model Empresa {
   ventas          Venta[]
   pagos           Pago[]
   expedientes     Expediente[]
+  planCuotas      PlanCuota[]
   notificaciones  Notificacion[]
 
   @@map("empresas")
@@ -203,6 +204,7 @@ model Venta {
   // Términos financieros
   precioTotal        Decimal           @map("precio_total") @db.Decimal(12, 2)
   enganche           Decimal           @default(0) @db.Decimal(12, 2)
+  tasaAnual          Decimal           @default(0) @map("tasa_anual") @db.Decimal(5, 4)
   numCuotas          Int               @default(0) @map("num_cuotas")
   valorCuota         Decimal           @default(0) @map("valor_cuota") @db.Decimal(12, 2)
   cuotaInicio        Int               @default(1) @map("cuota_inicio")
@@ -215,6 +217,7 @@ model Venta {
   numTransferencia   String?           @map("num_transferencia") @db.VarChar(100)
   metodoPago         String?           @map("metodo_pago") @db.VarChar(50)
   entidadBancaria    EntidadBancaria?  @map("entidad_bancaria")
+  comprobanteEngancheUrl String?       @map("comprobante_enganche_url") @db.VarChar(512)
 
   estado             EstadoVenta       @default(activo)
   createdAt          DateTime          @default(now()) @map("created_at")
@@ -226,12 +229,39 @@ model Venta {
   vendedor     Vendedor?    @relation(fields: [vendedorId], references: [id], onUpdate: Cascade, onDelete: SetNull)
   pagos        Pago[]
   expedientes  Expediente[]
+  planCuotas   PlanCuota[]
 
   @@index([empresaId])
   @@index([propietarioId])
   @@index([loteId])
   @@index([vendedorId])
   @@map("ventas")
+}
+
+// Plan referencial de cuotas generado a partir de los términos financieros de la
+// venta. Refleja el modelo del Excel: PMT anual + proporción anual aplicada al
+// pago mensual. Se persiste al crear la venta y se regenera si los términos
+// cambian. Los Pagos reales se enlazan por (ventaId, numCuota).
+model PlanCuota {
+  id                 Int      @id @default(autoincrement())
+  empresaId          Int      @map("empresa_id")
+  ventaId            Int      @map("venta_id")
+  numCuota           Int      @map("num_cuota")
+  anio               Int
+  fechaVencimiento   DateTime @map("fecha_vencimiento") @db.Date
+  cuotaReferencial   Decimal  @map("cuota_referencial") @db.Decimal(12, 2)
+  capitalReferencial Decimal  @map("capital_referencial") @db.Decimal(12, 2)
+  interesReferencial Decimal  @map("interes_referencial") @db.Decimal(12, 2)
+  saldoReferencial   Decimal  @map("saldo_referencial") @db.Decimal(12, 2)
+  propInteresAnual   Decimal  @map("prop_interes_anual") @db.Decimal(8, 6)
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  empresa  Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  venta    Venta   @relation(fields: [ventaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@unique([ventaId, numCuota])
+  @@index([ventaId])
+  @@map("plan_cuotas")
 }
 
 model Pago {
@@ -245,6 +275,7 @@ model Pago {
   estado            EstadoPago @default(pendiente)
   metodoPago        String?    @map("metodo_pago") @db.VarChar(50)
   referencia        String?    @db.VarChar(100)
+  descripcion       String?    @db.VarChar(500)
   comprobanteUrl    String?    @map("comprobante_url") @db.VarChar(512)
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")

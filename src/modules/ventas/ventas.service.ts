@@ -19,6 +19,7 @@ import {
   EstadoPago,
   EstadoVenta,
 } from '../../generated/prisma/enums.js';
+import { generarPlanVenta, regenerarPlanVenta } from '../amortizacion/amortizacion.service.js';
 
 export interface CreateVentaInput {
   // Opción A: propietario existente
@@ -32,6 +33,7 @@ export interface CreateVentaInput {
 
   precioTotal: number;
   enganche?: number;
+  tasaAnual?: number;
   numCuotas?: number;
   valorCuota?: number;
   cuotaInicio?: number;
@@ -42,6 +44,7 @@ export interface CreateVentaInput {
   numTransferencia?: string | null;
   metodoPago?: string | null;
   entidadBancaria?: EntidadBancaria | null;
+  comprobanteEngancheUrl?: string | null;
 }
 
 /* ── Helpers ────────────────────────────────────────────────── */
@@ -57,6 +60,7 @@ const includeDetalle = {
   lote:        true,
   vendedor:    true,
   pagos:       true,
+  planCuotas:  true,
 } as const;
 
 /* ── Lectura ───────────────────────────────────────────────── */
@@ -108,6 +112,7 @@ export async function createVenta(empresaId: number, input: CreateVentaInput) {
         vendedorId:       input.vendedorId ?? null,
         precioTotal:      input.precioTotal,
         enganche:         input.enganche ?? 0,
+        tasaAnual:        input.tasaAnual ?? 0,
         numCuotas:        input.numCuotas ?? 0,
         valorCuota:       input.valorCuota ?? 0,
         cuotaInicio:      input.cuotaInicio ?? 1,
@@ -116,6 +121,7 @@ export async function createVenta(empresaId: number, input: CreateVentaInput) {
         numTransferencia: input.numTransferencia ?? null,
         metodoPago:       input.metodoPago ?? null,
         entidadBancaria:  input.entidadBancaria ?? null,
+        comprobanteEngancheUrl: input.comprobanteEngancheUrl ?? null,
       },
     });
 
@@ -155,6 +161,18 @@ export async function createVenta(empresaId: number, input: CreateVentaInput) {
       await tx.pago.createMany({ data: pagosACrear });
     }
 
+    // 5. Generar plan de cuotas referencial (si hay plazo definido)
+    if (numCuotas > 0) {
+      const plazoAños = Math.ceil(numCuotas / 12);
+      await generarPlanVenta(tx, venta.id, empresaId, {
+        capital:     Number(input.precioTotal),
+        enganche:    Number(input.enganche ?? 0),
+        tasaAnual:   Number(input.tasaAnual ?? 0),
+        plazoAños,
+        fechaInicio: baseDate,
+      });
+    }
+
     return tx.venta.findUniqueOrThrow({
       where: { id: venta.id },
       include: includeDetalle,
@@ -168,11 +186,18 @@ export async function updateVenta(
   id: number,
   empresaId: number,
   data: Partial<{
+    // Campos del propietario (se actualizan en la tabla Propietario asociada)
+    propietarioNombre: string;
+    propietarioEmail: string | null;
+    propietarioTelefono: string | null;
+    propietarioDireccion: string | null;
+    // Campos de la venta
     loteId: number | null;
     descripcionLote: string | null;
     vendedorId: number | null;
     precioTotal: number;
     enganche: number;
+    tasaAnual: number;
     numCuotas: number;
     valorCuota: number;
     cuotaInicio: number;
@@ -181,11 +206,22 @@ export async function updateVenta(
     numTransferencia: string | null;
     metodoPago: string | null;
     entidadBancaria: EntidadBancaria | null;
+    comprobanteEngancheUrl: string | null;
     estado: EstadoVenta;
   }>,
 ) {
   const venta = await prisma.venta.findFirst({ where: { id, empresaId } });
   if (!venta) return null;
+
+  // Actualizar datos del propietario si vienen en el payload
+  const propData: Record<string, unknown> = {};
+  if (data.propietarioNombre   !== undefined) propData.nombre    = data.propietarioNombre;
+  if (data.propietarioEmail    !== undefined) propData.email     = data.propietarioEmail;
+  if (data.propietarioTelefono !== undefined) propData.telefono  = data.propietarioTelefono;
+  if (data.propietarioDireccion !== undefined) propData.direccion = data.propietarioDireccion;
+  if (Object.keys(propData).length > 0) {
+    await prisma.propietario.update({ where: { id: venta.propietarioId }, data: propData });
+  }
 
   await prisma.venta.update({
     where: { id },
@@ -195,6 +231,7 @@ export async function updateVenta(
       ...(data.vendedorId !== undefined       && { vendedorId:       data.vendedorId }),
       ...(data.precioTotal !== undefined      && { precioTotal:      data.precioTotal }),
       ...(data.enganche !== undefined         && { enganche:         data.enganche }),
+      ...(data.tasaAnual !== undefined        && { tasaAnual:        data.tasaAnual }),
       ...(data.numCuotas !== undefined        && { numCuotas:        data.numCuotas }),
       ...(data.valorCuota !== undefined       && { valorCuota:       data.valorCuota }),
       ...(data.cuotaInicio !== undefined      && { cuotaInicio:      data.cuotaInicio }),
@@ -203,9 +240,32 @@ export async function updateVenta(
       ...(data.numTransferencia !== undefined && { numTransferencia: data.numTransferencia }),
       ...(data.metodoPago !== undefined       && { metodoPago:       data.metodoPago }),
       ...(data.entidadBancaria !== undefined  && { entidadBancaria:  data.entidadBancaria }),
+      ...(data.comprobanteEngancheUrl !== undefined && { comprobanteEngancheUrl: data.comprobanteEngancheUrl }),
       ...(data.estado !== undefined           && { estado:           data.estado }),
     },
   });
+
+  // Si algún término financiero cambió, regenerar el plan
+  const cambioTerminos =
+    data.precioTotal !== undefined ||
+    data.enganche    !== undefined ||
+    data.tasaAnual   !== undefined ||
+    data.numCuotas   !== undefined ||
+    data.fechaInicio !== undefined;
+
+  if (cambioTerminos) {
+    const actual = await prisma.venta.findUniqueOrThrow({ where: { id } });
+    if (actual.numCuotas > 0) {
+      const plazoAños = Math.ceil(actual.numCuotas / 12);
+      await regenerarPlanVenta(id, empresaId, {
+        capital:     Number(actual.precioTotal),
+        enganche:    Number(actual.enganche),
+        tasaAnual:   Number(actual.tasaAnual),
+        plazoAños,
+        fechaInicio: actual.fechaInicio,
+      });
+    }
+  }
 
   // Liberar lote si la venta se cancela
   if (data.estado === EstadoVenta.cancelado && venta.loteId) {
