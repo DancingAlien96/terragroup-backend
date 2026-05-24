@@ -4,7 +4,9 @@ import { Rol } from '../../generated/prisma/enums.js';
 
 const SELECT_SAFE = {
   id: true, empresaId: true, nombre: true, email: true,
-  username: true, rol: true, activo: true, createdAt: true, updatedAt: true,
+  username: true, rol: true, activo: true,
+  seccionesPermitidas: true,
+  createdAt: true, updatedAt: true,
 } as const;
 
 export function listUsuarios(empresaId: number) {
@@ -24,17 +26,18 @@ export function getUsuario(id: number, empresaId: number) {
 
 export async function createUsuario(
   empresaId: number,
-  data: { nombre: string; email: string; username: string; password: string; rol: string },
+  data: { nombre: string; email: string; username: string; password: string; rol: string; seccionesPermitidas?: string | null },
 ) {
   const hashed = await bcrypt.hash(data.password, 10);
   return prisma.usuario.create({
     data: {
       empresaId,
-      nombre:   data.nombre,
-      email:    data.email,
-      username: data.username,
-      password: hashed,
-      rol:      data.rol as Rol,
+      nombre:              data.nombre,
+      email:               data.email,
+      username:            data.username,
+      password:            hashed,
+      rol:                 data.rol as Rol,
+      seccionesPermitidas: data.seccionesPermitidas ?? null,
     },
     select: SELECT_SAFE,
   });
@@ -43,18 +46,22 @@ export async function createUsuario(
 export async function updateUsuario(
   id: number,
   empresaId: number,
-  data: Partial<{ nombre: string; email: string; username: string; rol: string; activo: boolean; password: string }>,
+  data: Partial<{
+    nombre: string; email: string; username: string; rol: string;
+    activo: boolean; password: string; seccionesPermitidas: string | null;
+  }>,
 ) {
   const existing = await prisma.usuario.findFirst({ where: { id, empresaId } });
   if (!existing) return null;
 
   const payload: Record<string, unknown> = {};
-  if (data.nombre !== undefined)   payload.nombre   = data.nombre;
-  if (data.email !== undefined)    payload.email    = data.email;
-  if (data.username !== undefined) payload.username = data.username;
-  if (data.rol !== undefined)      payload.rol      = data.rol;
-  if (data.activo !== undefined)   payload.activo   = data.activo;
-  if (data.password !== undefined) payload.password = await bcrypt.hash(data.password, 10);
+  if (data.nombre !== undefined)              payload.nombre              = data.nombre;
+  if (data.email !== undefined)               payload.email               = data.email;
+  if (data.username !== undefined)            payload.username            = data.username;
+  if (data.rol !== undefined)                 payload.rol                 = data.rol;
+  if (data.activo !== undefined)              payload.activo              = data.activo;
+  if (data.password !== undefined)            payload.password            = await bcrypt.hash(data.password, 10);
+  if (data.seccionesPermitidas !== undefined) payload.seccionesPermitidas = data.seccionesPermitidas;
 
   if (Object.keys(payload).length === 0) {
     return getUsuario(id, empresaId);

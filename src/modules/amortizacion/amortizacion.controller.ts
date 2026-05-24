@@ -38,6 +38,28 @@ export async function getPlanByVenta(req: Request, res: Response) {
   }
 }
 
+/** POST /api/amortizacion/venta/:ventaId/liquidar — liquida todas las cuotas pendientes. */
+export async function liquidar(req: Request, res: Response) {
+  try {
+    const ventaId = Number(req.params.ventaId);
+    const empresaId = req.user!.empresaId;
+    const venta = await prisma.venta.findFirst({ where: { id: ventaId, empresaId } });
+    if (!venta) return res.status(404).json({ success: false, message: 'Venta no encontrada' });
+
+    const b = req.body ?? {};
+    const result = await svc.liquidarVenta(ventaId, empresaId, {
+      metodoPago:     b.metodo_pago ?? b.metodoPago ?? null,
+      referencia:     b.referencia ?? null,
+      descripcion:    b.descripcion ?? null,
+      comprobanteUrl: b.comprobante_url ?? b.comprobanteUrl ?? null,
+      fechaPago:      b.fecha_pago ? new Date(b.fecha_pago) : (b.fechaPago ? new Date(b.fechaPago) : new Date()),
+    });
+    return res.json({ success: true, data: result });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: String(e) });
+  }
+}
+
 /** POST /api/amortizacion/venta/:ventaId/regenerar — borra y recrea el plan. */
 export async function regenerar(req: Request, res: Response) {
   try {

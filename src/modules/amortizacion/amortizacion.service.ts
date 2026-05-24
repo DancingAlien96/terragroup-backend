@@ -159,6 +159,60 @@ export async function regenerarPlanVenta(
   });
 }
 
+/**
+ * Liquida anticipadamente todas las cuotas pendientes de una venta.
+ * Crea un Pago por cada cuota no-pagada con monto = cuotaReferencial y estado pagado.
+ * Devuelve cuántos pagos se crearon y el total liquidado.
+ */
+export async function liquidarVenta(
+  ventaId: number,
+  empresaId: number,
+  opts: {
+    metodoPago?: string | null;
+    referencia?: string | null;
+    descripcion?: string | null;
+    fechaPago?: Date;
+    comprobanteUrl?: string | null;
+  },
+): Promise<{ creados: number; totalLiquidado: number }> {
+  return prisma.$transaction(async (tx) => {
+    const planCuotas = await tx.planCuota.findMany({
+      where:   { ventaId, empresaId },
+      orderBy: { numCuota: 'asc' },
+    });
+    const existingPagos = await tx.pago.findMany({
+      where:  { ventaId, empresaId },
+      select: { numCuota: true },
+    });
+    const yaTienePago = new Set(existingPagos.map((p) => p.numCuota).filter((n): n is number => n != null));
+
+    const fechaPago   = opts.fechaPago ?? new Date();
+    const descripcion = opts.descripcion ?? 'Liquidación anticipada';
+
+    const data = planCuotas
+      .filter((c) => !yaTienePago.has(c.numCuota))
+      .map((c) => ({
+        empresaId,
+        ventaId,
+        numCuota:         c.numCuota,
+        monto:            c.cuotaReferencial,
+        fechaVencimiento: c.fechaVencimiento,
+        fechaPago,
+        estado:           'pagado' as const,
+        metodoPago:       opts.metodoPago ?? null,
+        referencia:       opts.referencia ?? null,
+        descripcion,
+        comprobanteUrl:   opts.comprobanteUrl ?? null,
+      }));
+
+    if (data.length === 0) return { creados: 0, totalLiquidado: 0 };
+
+    await tx.pago.createMany({ data });
+    const total = data.reduce((s, p) => s + Number(p.monto), 0);
+    return { creados: data.length, totalLiquidado: total };
+  });
+}
+
 /** Devuelve el plan de una venta con los pagos cruzados por numCuota. */
 export async function obtenerPlanVenta(ventaId: number, empresaId: number) {
   const venta = await prisma.venta.findFirst({
@@ -177,10 +231,32 @@ export async function obtenerPlanVenta(ventaId: number, empresaId: number) {
     if (p.numCuota != null) pagosPorCuota.set(p.numCuota, p);
   }
 
+  // Recorre el plan en orden y aplica los abonos extra a capital:
+  //   abonoExtra = max(0, monto pagado - cuota referencial) cuando estado = pagado
+  //   saldoAjustado = saldoReferencial - acumulado de abonos extras hasta esa cuota
+  //   estaCubierta = saldoAjustado <= 0 (cuota anticipadamente cubierta por abonos previos)
+  let acumExtra = 0;
+  let cuotasCubiertas = 0;
   const filas = plan.map((c) => {
     const pago = pagosPorCuota.get(c.numCuota) ?? null;
+    const cuotaRef = Number(c.cuotaReferencial);
+    const fuePagado = pago?.estado === 'pagado';
+    const abonoExtra = fuePagado ? Math.max(0, Number(pago!.monto) - cuotaRef) : 0;
+    acumExtra += abonoExtra;
+
+    const saldoOriginal = Number(c.saldoReferencial);
+    const saldoAjustado = Math.max(0, saldoOriginal - acumExtra);
+    // Una cuota futura (sin pago) se considera "cubierta" si el saldo original
+    // de la cuota anterior ya estaba completamente absorbido por abonos extras.
+    const saldoAnteriorAjustado = saldoOriginal + Number(c.capitalReferencial) - acumExtra;
+    const estaCubierta = !fuePagado && saldoAnteriorAjustado <= 0;
+    if (estaCubierta) cuotasCubiertas++;
+
     return {
       ...c,
+      abonoExtra,
+      saldoAjustado,
+      estaCubierta,
       pago: pago
         ? {
             id:          pago.id,
@@ -195,5 +271,12 @@ export async function obtenerPlanVenta(ventaId: number, empresaId: number) {
     };
   });
 
-  return { venta, plan: filas };
+  return {
+    venta,
+    plan: filas,
+    resumen: {
+      totalAbonosExtra: acumExtra,
+      cuotasCubiertas,
+    },
+  };
 }

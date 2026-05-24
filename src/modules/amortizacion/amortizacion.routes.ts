@@ -8,5 +8,6 @@ router.use(authMiddleware);
 router.post('/simular',                  ctrl.simular);
 router.get ('/venta/:ventaId',           ctrl.getPlanByVenta);
 router.post('/venta/:ventaId/regenerar', ctrl.regenerar);
+router.post('/venta/:ventaId/liquidar',  ctrl.liquidar);
 
 export default router;

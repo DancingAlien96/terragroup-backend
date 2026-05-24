@@ -96,16 +96,18 @@ model Empresa {
 }
 
 model Usuario {
-  id          Int      @id @default(autoincrement())
-  empresaId   Int      @map("empresa_id")
-  nombre      String   @db.VarChar(100)
-  email       String   @unique @db.VarChar(150)
-  username    String   @unique @db.VarChar(80)
-  password    String   @db.VarChar(255)
-  rol         Rol      @default(admin)
-  activo      Boolean  @default(true)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                  Int      @id @default(autoincrement())
+  empresaId           Int      @map("empresa_id")
+  nombre              String   @db.VarChar(100)
+  email               String   @unique @db.VarChar(150)
+  username            String   @unique @db.VarChar(80)
+  password            String   @db.VarChar(255)
+  rol                 Rol      @default(admin)
+  activo              Boolean  @default(true)
+  // CSV con paths permitidos del sidebar. null = todas las del plan (default).
+  seccionesPermitidas String?  @map("secciones_permitidas") @db.VarChar(1000)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   empresa         Empresa        @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   notificaciones  Notificacion[]

@@ -28,7 +28,11 @@ export async function create(req: Request, res: Response) {
     }
     const data = await svc.createExpediente(empresaId, ventaId, nombre, archivo_url);
     res.status(201).json({ success: true, data });
-  } catch (err) {
+  } catch (err: any) {
+    if (typeof err?.message === 'string' && err.message.includes('Límite alcanzado')) {
+      res.status(409).json({ success: false, message: err.message });
+      return;
+    }
     res.status(500).json({ success: false, message: String(err) });
   }
 }

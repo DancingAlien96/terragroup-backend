@@ -23,11 +23,12 @@ export async function get(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   const { nombre, email, username, password, rol } = req.body;
+  const seccionesPermitidas = req.body.secciones_permitidas ?? req.body.seccionesPermitidas ?? null;
   if (!nombre || !email || !username || !password || !rol) {
     return res.status(400).json({ success: false, message: 'Faltan campos requeridos' });
   }
   try {
-    const user = await svc.createUsuario(req.user!.empresaId, { nombre, email, username, password, rol });
+    const user = await svc.createUsuario(req.user!.empresaId, { nombre, email, username, password, rol, seccionesPermitidas });
 
     // Send welcome email (fire-and-forget)
     sendBienvenidaUsuario({ to: email, nombre, username, password, rol }).catch(() => {});
@@ -53,7 +54,12 @@ export async function update(req: Request, res: Response) {
     return res.status(400).json({ success: false, message: 'No puedes cambiar tu propio rol' });
   }
   try {
-    const user = await svc.updateUsuario(targetId, me.empresaId, req.body);
+    const b = req.body;
+    const data = {
+      ...b,
+      ...(b.secciones_permitidas !== undefined && { seccionesPermitidas: b.secciones_permitidas }),
+    };
+    const user = await svc.updateUsuario(targetId, me.empresaId, data);
     if (!user) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     return res.json({ success: true, data: user });
   } catch (e: any) {

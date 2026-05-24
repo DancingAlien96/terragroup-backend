@@ -1,5 +1,7 @@
 import prisma from '../../config/prisma.js';
 
+export const MAX_EXPEDIENTES_POR_VENTA = 3;
+
 export function listExpedientes(empresaId: number, ventaId: number) {
   return prisma.expediente.findMany({
     where:   { empresaId, ventaId },
@@ -7,12 +9,16 @@ export function listExpedientes(empresaId: number, ventaId: number) {
   });
 }
 
-export function createExpediente(
+export async function createExpediente(
   empresaId: number,
   ventaId: number,
   nombre: string,
   archivoUrl: string,
 ) {
+  const count = await prisma.expediente.count({ where: { empresaId, ventaId } });
+  if (count >= MAX_EXPEDIENTES_POR_VENTA) {
+    throw new Error(`Límite alcanzado: máximo ${MAX_EXPEDIENTES_POR_VENTA} documentos por cliente.`);
+  }
   return prisma.expediente.create({
     data: { empresaId, ventaId, nombre, archivoUrl },
   });

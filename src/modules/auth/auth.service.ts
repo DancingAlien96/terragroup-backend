@@ -12,6 +12,7 @@ export interface UserWithPlan {
   rol: string;
   empresa_nombre: string;
   plan: string;
+  secciones_permitidas: string | null;
 }
 
 export function findUserByUsername(username: string) {
@@ -25,14 +26,15 @@ export async function getUserWithPlan(userId: number): Promise<UserWithPlan | nu
   });
   if (!u) return null;
   return {
-    id:             u.id,
-    empresa_id:     u.empresaId,
-    nombre:         u.nombre,
-    email:          u.email,
-    username:       u.username,
-    rol:            u.rol,
-    empresa_nombre: u.empresa.nombre,
-    plan:           u.empresa.plan.nombre,
+    id:                   u.id,
+    empresa_id:           u.empresaId,
+    nombre:               u.nombre,
+    email:                u.email,
+    username:             u.username,
+    rol:                  u.rol,
+    empresa_nombre:       u.empresa.nombre,
+    plan:                 u.empresa.plan.nombre,
+    secciones_permitidas: u.seccionesPermitidas,
   };
 }
 
