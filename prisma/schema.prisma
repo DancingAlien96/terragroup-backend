@@ -91,6 +91,7 @@ model Empresa {
   expedientes     Expediente[]
   planCuotas      PlanCuota[]
   notificaciones  Notificacion[]
+  auditLogs       AuditLog[]
 
   @@map("empresas")
 }
@@ -111,6 +112,7 @@ model Usuario {
 
   empresa         Empresa        @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   notificaciones  Notificacion[]
+  auditLogs       AuditLog[]
 
   @@index([empresaId])
   @@map("usuarios")
@@ -140,6 +142,7 @@ model Propietario {
   id            Int          @id @default(autoincrement())
   empresaId     Int          @map("empresa_id")
   nombre        String       @db.VarChar(150)
+  nit           String?      @db.VarChar(20)
   telefono      String?      @db.VarChar(20)
   email         String?      @db.VarChar(150)
   direccion     String?      @db.Text
@@ -271,6 +274,7 @@ model Pago {
   empresaId         Int        @map("empresa_id")
   ventaId           Int        @map("venta_id")
   numCuota          Int?       @map("num_cuota")
+  numRecibo         Int?       @map("num_recibo")
   monto             Decimal    @db.Decimal(12, 2)
   fechaPago         DateTime?  @map("fecha_pago") @db.Date
   fechaVencimiento  DateTime   @map("fecha_vencimiento") @db.Date
@@ -320,4 +324,25 @@ model Notificacion {
 
   @@index([empresaId])
   @@map("notificaciones")
+}
+
+// Bitácora de cambios: quién hizo qué cambio sobre qué entidad y cuándo.
+// usuarioId opcional para acciones del sistema; cambios opcional con diff.
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  empresaId  Int      @map("empresa_id")
+  usuarioId  Int?     @map("usuario_id")
+  entidad    String   @db.VarChar(50)              // 'Venta', 'Pago', 'Propietario', 'Usuario', etc.
+  entidadId  Int      @map("entidad_id")
+  accion     String   @db.VarChar(20)              // 'crear', 'actualizar', 'eliminar'
+  descripcion String? @db.VarChar(500)             // descripción humana opcional
+  cambios    Json?                                  // diff opcional {before, after}
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  usuario  Usuario? @relation(fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+
+  @@index([empresaId, createdAt])
+  @@index([empresaId, entidad, entidadId])
+  @@map("audit_logs")
 }

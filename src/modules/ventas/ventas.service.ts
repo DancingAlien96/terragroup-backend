@@ -51,7 +51,7 @@ export interface CreateVentaInput {
   // Opción A: propietario existente
   propietarioId?: number;
   // Opción B: crear propietario nuevo
-  propietario?: { nombre: string; email?: string | null; telefono?: string | null; direccion?: string | null };
+  propietario?: { nombre: string; nit?: string | null; email?: string | null; telefono?: string | null; direccion?: string | null };
 
   loteId?: number | null;
   descripcionLote?: string | null;
@@ -134,6 +134,7 @@ export async function createVenta(empresaId: number, input: CreateVentaInput) {
         data: {
           empresaId,
           nombre:    input.propietario.nombre,
+          nit:       input.propietario.nit ?? null,
           email:     input.propietario.email ?? null,
           telefono:  input.propietario.telefono ?? null,
           direccion: input.propietario.direccion ?? null,
@@ -228,6 +229,7 @@ export async function updateVenta(
   data: Partial<{
     // Campos del propietario (se actualizan en la tabla Propietario asociada)
     propietarioNombre: string;
+    propietarioNit: string | null;
     propietarioEmail: string | null;
     propietarioTelefono: string | null;
     propietarioDireccion: string | null;
@@ -270,6 +272,7 @@ export async function updateVenta(
   // Actualizar datos del propietario si vienen en el payload
   const propData: Record<string, unknown> = {};
   if (data.propietarioNombre   !== undefined) propData.nombre    = data.propietarioNombre;
+  if (data.propietarioNit      !== undefined) propData.nit       = data.propietarioNit;
   if (data.propietarioEmail    !== undefined) propData.email     = data.propietarioEmail;
   if (data.propietarioTelefono !== undefined) propData.telefono  = data.propietarioTelefono;
   if (data.propietarioDireccion !== undefined) propData.direccion = data.propietarioDireccion;

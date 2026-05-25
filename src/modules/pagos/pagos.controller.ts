@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import * as svc from './pagos.service.js';
 import prisma from '../../config/prisma.js';
 import { sendPagoConfirmado } from '../../config/mailer.js';
+import { logAudit } from '../../utils/audit.js';
 
 export async function list(req: Request, res: Response) {
   try {
@@ -29,6 +30,12 @@ export async function create(req: Request, res: Response) {
   }
   try {
     const item = await svc.createPago(req.user!.empresaId, req.body);
+
+    logAudit({
+      empresaId: req.user!.empresaId, usuarioId: req.user!.id,
+      entidad: 'Pago', entidadId: item.id, accion: 'crear',
+      descripcion: `Pago recibo #${item.num_recibo} · ${item.propietario_nombre} · Q${item.monto}`,
+    });
 
     // Enviar correo de confirmación (fire-and-forget) si el propietario tiene email
     if (item.venta_id) {
@@ -72,6 +79,12 @@ export async function update(req: Request, res: Response) {
   try {
     const item = await svc.updatePago(Number(req.params.id), req.user!.empresaId, req.body);
     if (!item) return res.status(404).json({ success: false, message: 'Pago no encontrado' });
+    logAudit({
+      empresaId: req.user!.empresaId, usuarioId: req.user!.id,
+      entidad: 'Pago', entidadId: item.id, accion: 'actualizar',
+      descripcion: `Pago recibo #${item.num_recibo ?? '—'}`,
+      cambios: req.body,
+    });
     return res.json({ success: true, data: item });
   } catch (e: any) {
     if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
@@ -81,8 +94,13 @@ export async function update(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   try {
-    const deleted = await svc.deletePago(Number(req.params.id), req.user!.empresaId);
+    const pagoId = Number(req.params.id);
+    const deleted = await svc.deletePago(pagoId, req.user!.empresaId);
     if (!deleted) return res.status(404).json({ success: false, message: 'Pago no encontrado' });
+    logAudit({
+      empresaId: req.user!.empresaId, usuarioId: req.user!.id,
+      entidad: 'Pago', entidadId: pagoId, accion: 'eliminar',
+    });
     return res.json({ success: true, message: 'Pago eliminado' });
   } catch (e: any) {
     if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });

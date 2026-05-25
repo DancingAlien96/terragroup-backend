@@ -18,6 +18,7 @@ function shape(p: any) {
     venta_id:          p.ventaId,
     cliente_id:        p.ventaId,        // alias legacy (UI espera cliente_id)
     num_cuota:         p.numCuota,
+    num_recibo:        p.numRecibo,
     monto:             Number(p.monto),
     fecha_pago:        p.fechaPago,
     fecha_vencimiento: p.fechaVencimiento,
@@ -82,11 +83,19 @@ export async function createPago(
   ]);
   const numCuota = pagosCount + (venta?.cuotaInicio ?? 1);
 
+  // Numerador de recibo correlativo por empresa (próximo = max + 1)
+  const aggRecibo = await prisma.pago.aggregate({
+    where: { empresaId },
+    _max:  { numRecibo: true },
+  });
+  const numRecibo = (aggRecibo._max.numRecibo ?? 0) + 1;
+
   const created = await prisma.pago.create({
     data: {
       empresaId,
       ventaId,
       numCuota,
+      numRecibo,
       monto:            data.monto,
       fechaVencimiento: new Date(data.fecha_vencimiento),
       fechaPago:        data.fecha_pago ? new Date(data.fecha_pago) : null,

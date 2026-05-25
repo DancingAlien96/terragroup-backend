@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as svc from './ventas.service.js';
 import { sendComprobanteEnganche } from '../../config/mailer.js';
+import { logAudit } from '../../utils/audit.js';
 
 /** Aplana una venta+propietario+lote al shape "flat" que el frontend espera. */
 function shape(v: any) {
@@ -12,6 +13,7 @@ function shape(v: any) {
     vendedor_id:       v.vendedorId,
     // Compat: datos del propietario aplanados como si fueran del "cliente"
     nombre_comprador:  v.propietario?.nombre ?? null,
+    nit:               v.propietario?.nit ?? null,
     email:             v.propietario?.email ?? null,
     telefono:          v.propietario?.telefono ?? null,
     // Datos de la venta
@@ -68,7 +70,7 @@ export async function create(req: Request, res: Response) {
   const input = {
     propietarioId:    b.propietarioId ?? b.propietario_id,
     propietario:      b.propietario ?? (b.nombre_comprador ? {
-      nombre: b.nombre_comprador, email: b.email, telefono: b.telefono,
+      nombre: b.nombre_comprador, nit: b.nit, email: b.email, telefono: b.telefono,
     } : undefined),
     loteId:           b.loteId ?? b.lote_id ?? null,
     descripcionLote:  b.descripcionLote ?? b.descripcion_lote ?? null,
@@ -96,6 +98,12 @@ export async function create(req: Request, res: Response) {
 
   try {
     const item = await svc.createVenta(req.user!.empresaId, input);
+
+    logAudit({
+      empresaId: req.user!.empresaId, usuarioId: req.user!.id,
+      entidad: 'Venta', entidadId: item.id, accion: 'crear',
+      descripcion: `Venta a ${item.propietario.nombre}${item.descripcionLote ? ` · ${item.descripcionLote}` : ''}`,
+    });
 
     // Fire-and-forget: enviar comprobante de enganche (al admin siempre, al propietario si tiene email)
     sendComprobanteEnganche({
@@ -126,6 +134,7 @@ export async function update(req: Request, res: Response) {
       ...b,
       // Propietario (legacy: nombre_comprador / email / telefono vienen del form de cliente)
       ...(b.nombre_comprador !== undefined && { propietarioNombre:   b.nombre_comprador }),
+      ...(b.nit              !== undefined && { propietarioNit:      b.nit || null }),
       ...(b.email            !== undefined && { propietarioEmail:    b.email || null }),
       ...(b.telefono         !== undefined && { propietarioTelefono: b.telefono || null }),
       // Venta
@@ -146,6 +155,12 @@ export async function update(req: Request, res: Response) {
     };
     const item = await svc.updateVenta(Number(req.params.id), req.user!.empresaId, data);
     if (!item) return res.status(404).json({ success: false, message: 'Venta no encontrada' });
+    logAudit({
+      empresaId: req.user!.empresaId, usuarioId: req.user!.id,
+      entidad: 'Venta', entidadId: item.id, accion: 'actualizar',
+      descripcion: `Venta de ${item.propietario.nombre}`,
+      cambios: data,
+    });
     return res.json({ success: true, data: shape(item) });
   } catch (e: any) {
     if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
@@ -155,8 +170,13 @@ export async function update(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   try {
-    const ok = await svc.deleteVenta(Number(req.params.id), req.user!.empresaId);
+    const ventaId = Number(req.params.id);
+    const ok = await svc.deleteVenta(ventaId, req.user!.empresaId);
     if (!ok) return res.status(404).json({ success: false, message: 'Venta no encontrada' });
+    logAudit({
+      empresaId: req.user!.empresaId, usuarioId: req.user!.id,
+      entidad: 'Venta', entidadId: ventaId, accion: 'eliminar',
+    });
     return res.json({ success: true, message: 'Venta eliminada' });
   } catch (e: any) {
     if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
