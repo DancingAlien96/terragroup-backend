@@ -1,5 +1,6 @@
 import prisma from '../../config/prisma.js';
 import { EstadoCuenta, EstadoPago } from '../../generated/prisma/enums.js';
+import { optionalString, positive, ValidationError } from '../../utils/validate.js';
 
 const includeDetalle = {
   venta: {
@@ -70,7 +71,9 @@ export async function createPago(
   },
 ) {
   const ventaId = data.ventaId ?? data.venta_id ?? data.cliente_id;
-  if (!ventaId) throw new Error('venta_id es requerido');
+  if (!ventaId) throw new ValidationError('venta_id es requerido');
+  positive('Monto del pago', data.monto);
+  if (data.referencia != null)  optionalString('Referencia', data.referencia, 100);
 
   // Auto-cuota: siguiente número de cuota después de los pagos existentes, offset por cuotaInicio
   const [pagosCount, venta] = await Promise.all([
@@ -108,6 +111,10 @@ export async function updatePago(
 ) {
   const existing = await prisma.pago.findFirst({ where: { id, empresaId } });
   if (!existing) return null;
+
+  if (data.monto !== undefined)       positive('Monto del pago', data.monto);
+  if (data.referencia !== undefined)  optionalString('Referencia', data.referencia, 100);
+  if (data.descripcion !== undefined) optionalString('Descripción', data.descripcion, 500);
 
   const payload: Record<string, unknown> = {};
   if (data.monto !== undefined)             payload.monto            = data.monto;

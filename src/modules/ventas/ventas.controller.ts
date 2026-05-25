@@ -45,7 +45,10 @@ export async function list(req: Request, res: Response) {
   try {
     const items = await svc.listVentas(req.user!.empresaId);
     return res.json({ success: true, data: items.map(shape) });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e: any) {
+    if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
+    return res.status(500).json({ success: false, message: String(e) });
+  }
 }
 
 export async function get(req: Request, res: Response) {
@@ -53,7 +56,10 @@ export async function get(req: Request, res: Response) {
     const item = await svc.getVenta(Number(req.params.id), req.user!.empresaId);
     if (!item) return res.status(404).json({ success: false, message: 'Venta no encontrada' });
     return res.json({ success: true, data: shape(item) });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e: any) {
+    if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
+    return res.status(500).json({ success: false, message: String(e) });
+  }
 }
 
 export async function create(req: Request, res: Response) {
@@ -107,7 +113,10 @@ export async function create(req: Request, res: Response) {
     }).catch((err) => console.error('[mailer] Error enviando comprobante de enganche:', err));
 
     return res.status(201).json({ success: true, data: shape(item) });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e: any) {
+    if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
+    return res.status(500).json({ success: false, message: String(e) });
+  }
 }
 
 export async function update(req: Request, res: Response) {
@@ -138,7 +147,10 @@ export async function update(req: Request, res: Response) {
     const item = await svc.updateVenta(Number(req.params.id), req.user!.empresaId, data);
     if (!item) return res.status(404).json({ success: false, message: 'Venta no encontrada' });
     return res.json({ success: true, data: shape(item) });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e: any) {
+    if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
+    return res.status(500).json({ success: false, message: String(e) });
+  }
 }
 
 export async function remove(req: Request, res: Response) {
@@ -146,5 +158,8 @@ export async function remove(req: Request, res: Response) {
     const ok = await svc.deleteVenta(Number(req.params.id), req.user!.empresaId);
     if (!ok) return res.status(404).json({ success: false, message: 'Venta no encontrada' });
     return res.json({ success: true, message: 'Venta eliminada' });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e: any) {
+    if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
+    return res.status(500).json({ success: false, message: String(e) });
+  }
 }

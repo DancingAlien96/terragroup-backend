@@ -20,6 +20,32 @@ import {
   EstadoVenta,
 } from '../../generated/prisma/enums.js';
 import { generarPlanVenta, regenerarPlanVenta } from '../amortizacion/amortizacion.service.js';
+import {
+  between,
+  intNonNegative,
+  nonEmptyString,
+  nonNegative,
+  optionalString,
+  positive,
+  ValidationError,
+} from '../../utils/validate.js';
+
+function validateVentaTerms(p: {
+  precioTotal?: number; enganche?: number; tasaAnual?: number;
+  numCuotas?: number; valorCuota?: number; cuotaInicio?: number;
+  descripcionLote?: string | null;
+}) {
+  if (p.precioTotal !== undefined) positive('Precio total', p.precioTotal);
+  if (p.enganche !== undefined)    nonNegative('Enganche', p.enganche);
+  if (p.tasaAnual !== undefined)   between('Tasa anual', p.tasaAnual, 0, 1);     // 0..100%
+  if (p.numCuotas !== undefined)   intNonNegative('Número de cuotas', p.numCuotas);
+  if (p.valorCuota !== undefined)  nonNegative('Valor por cuota', p.valorCuota);
+  if (p.cuotaInicio !== undefined) intNonNegative('Cuota inicio', p.cuotaInicio);
+  if (p.descripcionLote != null)   optionalString('Descripción del lote', p.descripcionLote, 255);
+  if (p.enganche !== undefined && p.precioTotal !== undefined && p.enganche > p.precioTotal) {
+    throw new ValidationError('El enganche no puede ser mayor al precio total');
+  }
+}
 
 export interface CreateVentaInput {
   // Opción A: propietario existente
@@ -83,12 +109,26 @@ export function getVenta(id: number, empresaId: number) {
 /* ── Creación ─────────────────────────────────────────────── */
 
 export async function createVenta(empresaId: number, input: CreateVentaInput) {
+  // Validaciones antes de la transacción
+  validateVentaTerms({
+    precioTotal:    input.precioTotal,
+    enganche:       input.enganche,
+    tasaAnual:      input.tasaAnual,
+    numCuotas:      input.numCuotas,
+    valorCuota:     input.valorCuota,
+    cuotaInicio:    input.cuotaInicio,
+    descripcionLote: input.descripcionLote,
+  });
+  if (!input.propietarioId && input.propietario?.nombre) {
+    nonEmptyString('Nombre del propietario', input.propietario.nombre, 100);
+  }
+
   return prisma.$transaction(async (tx) => {
     // 1. Resolver propietario (existente o crear nuevo)
     let propietarioId = input.propietarioId;
     if (!propietarioId) {
       if (!input.propietario?.nombre) {
-        throw new Error('Se requiere propietarioId o propietario.nombre');
+        throw new ValidationError('Se requiere propietarioId o propietario.nombre');
       }
       const nuevo = await tx.propietario.create({
         data: {
@@ -212,6 +252,20 @@ export async function updateVenta(
 ) {
   const venta = await prisma.venta.findFirst({ where: { id, empresaId } });
   if (!venta) return null;
+
+  // Validar antes de tocar la BD
+  validateVentaTerms({
+    precioTotal:    data.precioTotal,
+    enganche:       data.enganche,
+    tasaAnual:      data.tasaAnual,
+    numCuotas:      data.numCuotas,
+    valorCuota:     data.valorCuota,
+    cuotaInicio:    data.cuotaInicio,
+    descripcionLote: data.descripcionLote,
+  });
+  if (data.propietarioNombre !== undefined) {
+    nonEmptyString('Nombre del propietario', data.propietarioNombre, 100);
+  }
 
   // Actualizar datos del propietario si vienen en el payload
   const propData: Record<string, unknown> = {};
