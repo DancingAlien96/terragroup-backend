@@ -200,15 +200,25 @@ router.get('/reportes', async (req, res) => {
     const seisMesesAtras = new Date();
     seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 6);
 
+    // Cobrado: agrupar por fechaPago (cuando se cobró)
+    // Pendientes/Vencidos: agrupar por fechaVencimiento (cuando se esperaba el pago)
+    // Si filtramos todo por fechaPago, los pendientes (con fechaPago null) se pierden.
     const pagos = await prisma.pago.findMany({
-      where: { empresaId, fechaPago: { gte: seisMesesAtras } },
-      select: { fechaPago: true, monto: true, estado: true },
+      where: {
+        empresaId,
+        OR: [
+          { fechaPago:        { gte: seisMesesAtras } },
+          { fechaVencimiento: { gte: seisMesesAtras } },
+        ],
+      },
+      select: { fechaPago: true, fechaVencimiento: true, monto: true, estado: true },
     });
     type Bucket = { cobrado: number; pendiente: number; vencido: number };
     const byMes = new Map<string, Bucket>();
     for (const p of pagos) {
-      if (!p.fechaPago) continue;
-      const key = p.fechaPago.toISOString().slice(0, 7);
+      const refFecha = p.estado === 'pagado' ? p.fechaPago : p.fechaVencimiento;
+      if (!refFecha) continue;
+      const key = refFecha.toISOString().slice(0, 7);
       const b = byMes.get(key) ?? { cobrado: 0, pendiente: 0, vencido: 0 };
       const m = Number(p.monto);
       if (p.estado === 'pagado') b.cobrado += m;
@@ -271,7 +281,7 @@ router.get('/resumen-ejecutivo', async (req, res) => {
     const [
       empresa,
       ventas,
-      pagosAgg,
+      pagosTodos,
       pagosUltimos,
       lotesByEstado,
       vendedores,
@@ -285,14 +295,13 @@ router.get('/resumen-ejecutivo', async (req, res) => {
         include: {
           propietario: { select: { nombre: true } },
           lote:        { select: { clave: true } },
-          pagos:       { select: { estado: true, monto: true } },
+          pagos:       { select: { estado: true, monto: true, fechaVencimiento: true } },
         },
       }),
-      prisma.pago.groupBy({
-        by: ['estado'],
+      // Traemos todos los pagos para calcular KPIs dinámicos por fecha
+      prisma.pago.findMany({
         where:  { empresaId },
-        _sum:   { monto: true },
-        _count: true,
+        select: { estado: true, monto: true, fechaVencimiento: true },
       }),
       prisma.pago.findMany({
         where:  { empresaId, estado: EstadoPago.pagado, fechaPago: { gte: seisMesesAtras } },
@@ -309,18 +318,24 @@ router.get('/resumen-ejecutivo', async (req, res) => {
       }),
     ]);
 
-    // ── KPIs financieros ──
-    const sumByEstado = { pagado: 0, pendiente: 0, vencido: 0 };
-    const countByEstado = { pagado: 0, pendiente: 0, vencido: 0 };
-    for (const p of pagosAgg) {
-      sumByEstado[p.estado]   = Number(p._sum.monto ?? 0);
-      countByEstado[p.estado] = p._count;
+    // ── KPIs financieros (calculados dinámicamente por fecha) ──
+    // - Cobrado: pagos con estado='pagado'
+    // - Vencido: no pagados con fechaVencimiento ya pasada (sin importar el estado registrado)
+    // - Pendiente: no pagados con fechaVencimiento futura
+    let totalCobrado = 0, totalPendiente = 0, totalVencido = 0;
+    let countPagados = 0, countPendientes = 0, countVencidos = 0;
+    for (const p of pagosTodos) {
+      const m = Number(p.monto);
+      if (p.estado === 'pagado') {
+        totalCobrado += m; countPagados++;
+      } else if (p.fechaVencimiento && p.fechaVencimiento < today) {
+        totalVencido += m; countVencidos++;
+      } else {
+        totalPendiente += m; countPendientes++;
+      }
     }
-    const totalCobrado   = sumByEstado.pagado;
-    const totalPendiente = sumByEstado.pendiente;
-    const totalVencido   = sumByEstado.vencido;
-    const totalBase      = totalCobrado + totalPendiente + totalVencido;
-    const tasaCobranza   = totalBase > 0 ? Number(((totalCobrado / totalBase) * 100).toFixed(1)) : 0;
+    const totalBase    = totalCobrado + totalPendiente + totalVencido;
+    const tasaCobranza = totalBase > 0 ? Number(((totalCobrado / totalBase) * 100).toFixed(1)) : 0;
 
     // ── Cartera (mora calculada por venta) ──
     function addMonths(d: Date, m: number): Date {
@@ -348,7 +363,8 @@ router.get('/resumen-ejecutivo', async (req, res) => {
         const due = addMonths(fechaInicio, i);
         if (due <= today) fechasVencidas.push(due); else break;
       }
-      const pagosHechos = v.pagos.length;
+      // Solo cuotas realmente pagadas restan — los pendientes/vencidos siguen siendo deuda
+      const pagosHechos = v.pagos.filter((p) => p.estado === 'pagado').length;
       const cuotasVencidas = fechasVencidas.length - pagosHechos - cuotasPrevias;
       if (cuotasVencidas <= 0) continue;
 
@@ -430,9 +446,9 @@ router.get('/resumen-ejecutivo', async (req, res) => {
           total_pendiente: totalPendiente,
           total_vencido:   totalVencido,
           tasa_cobranza:   tasaCobranza,
-          pagos_pagados:   countByEstado.pagado,
-          pagos_pendientes: countByEstado.pendiente,
-          pagos_vencidos:  countByEstado.vencido,
+          pagos_pagados:   countPagados,
+          pagos_pendientes: countPendientes,
+          pagos_vencidos:  countVencidos,
         },
         cartera: {
           clientes_totales: ventas.length,
