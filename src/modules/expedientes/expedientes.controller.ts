@@ -13,7 +13,7 @@ export async function list(req: Request, res: Response) {
     const data = await svc.listExpedientes(empresaId, ventaId);
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ success: false, message: String(err) });
+    res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -33,7 +33,7 @@ export async function create(req: Request, res: Response) {
       res.status(409).json({ success: false, message: err.message });
       return;
     }
-    res.status(500).json({ success: false, message: String(err) });
+    res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -43,6 +43,6 @@ export async function remove(req: Request, res: Response) {
     if (!ok) { res.status(404).json({ success: false, message: 'No encontrado' }); return; }
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, message: String(err) });
+    res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }

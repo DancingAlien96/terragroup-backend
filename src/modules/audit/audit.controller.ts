@@ -44,6 +44,6 @@ export async function list(req: Request, res: Response) {
       })),
     });
   } catch (e) {
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }

@@ -4,7 +4,7 @@ import * as svc from './propietarios.service.js';
 export async function list(req: Request, res: Response) {
   try {
     return res.json({ success: true, data: await svc.listPropietarios(req.user!.empresaId) });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function get(req: Request, res: Response) {
@@ -12,7 +12,7 @@ export async function get(req: Request, res: Response) {
     const item = await svc.getPropietario(Number(req.params.id), req.user!.empresaId);
     if (!item) return res.status(404).json({ success: false, message: 'Propietario no encontrado' });
     return res.json({ success: true, data: item });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function create(req: Request, res: Response) {
@@ -21,7 +21,7 @@ export async function create(req: Request, res: Response) {
   try {
     const item = await svc.createPropietario(req.user!.empresaId, req.body);
     return res.status(201).json({ success: true, data: item });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function update(req: Request, res: Response) {
@@ -29,7 +29,7 @@ export async function update(req: Request, res: Response) {
     const item = await svc.updatePropietario(Number(req.params.id), req.user!.empresaId, req.body);
     if (!item) return res.status(404).json({ success: false, message: 'Propietario no encontrado' });
     return res.json({ success: true, data: item });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function remove(req: Request, res: Response) {
@@ -37,5 +37,5 @@ export async function remove(req: Request, res: Response) {
     const deleted = await svc.deletePropietario(Number(req.params.id), req.user!.empresaId);
     if (!deleted) return res.status(404).json({ success: false, message: 'Propietario no encontrado' });
     return res.json({ success: true, message: 'Propietario eliminado' });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }

@@ -4,7 +4,7 @@ import * as svc from './vendedores.service.js';
 
 export async function list(req: Request, res: Response) {
   try { return res.json({ success: true, data: await svc.listVendedores(req.user!.empresaId) }); }
-  catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function create(req: Request, res: Response) {
@@ -12,7 +12,7 @@ export async function create(req: Request, res: Response) {
   try {
     const item = await svc.createVendedor(req.user!.empresaId, req.body);
     return res.status(201).json({ success: true, data: item });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function update(req: Request, res: Response) {
@@ -20,7 +20,7 @@ export async function update(req: Request, res: Response) {
     const item = await svc.updateVendedor(Number(req.params.id), req.user!.empresaId, req.body);
     if (!item) return res.status(404).json({ success: false, message: 'Vendedor no encontrado' });
     return res.json({ success: true, data: item });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function remove(req: Request, res: Response) {
@@ -28,13 +28,13 @@ export async function remove(req: Request, res: Response) {
     const deleted = await svc.deleteVendedor(Number(req.params.id), req.user!.empresaId);
     if (!deleted) return res.status(404).json({ success: false, message: 'Vendedor no encontrado' });
     return res.json({ success: true, message: 'Vendedor eliminado' });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function listComisiones(req: Request, res: Response) {
   try {
     return res.json({ success: true, data: await svc.listComisiones(Number(req.params.id), req.user!.empresaId) });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function createComision(req: Request, res: Response) {
@@ -50,7 +50,7 @@ export async function createComision(req: Request, res: Response) {
       fecha_venta,
     });
     return res.status(201).json({ success: true, data: item });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function updateComision(req: Request, res: Response) {
@@ -63,7 +63,7 @@ export async function updateComision(req: Request, res: Response) {
     const item = await svc.updateComision(Number(req.params.comisionId), req.user!.empresaId, data);
     if (!item) return res.status(404).json({ success: false, message: 'Comision no encontrada' });
     return res.json({ success: true, data: item });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }
 
 export async function removeComision(req: Request, res: Response) {
@@ -71,5 +71,5 @@ export async function removeComision(req: Request, res: Response) {
     const deleted = await svc.deleteComision(Number(req.params.comisionId), req.user!.empresaId);
     if (!deleted) return res.status(404).json({ success: false, message: 'Comision no encontrada' });
     return res.json({ success: true, message: 'Comision eliminada' });
-  } catch (e) { return res.status(500).json({ success: false, message: String(e) }); }
+  } catch (e) { return res.status(500).json({ success: false, message: 'Error interno del servidor' }); }
 }

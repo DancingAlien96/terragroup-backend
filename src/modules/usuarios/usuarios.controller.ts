@@ -7,7 +7,7 @@ export async function list(req: Request, res: Response) {
     const users = await svc.listUsuarios(req.user!.empresaId);
     return res.json({ success: true, data: users });
   } catch (e) {
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -17,7 +17,7 @@ export async function get(req: Request, res: Response) {
     if (!user) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     return res.json({ success: true, data: user });
   } catch (e) {
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -30,15 +30,15 @@ export async function create(req: Request, res: Response) {
   try {
     const user = await svc.createUsuario(req.user!.empresaId, { nombre, email, username, password, rol, seccionesPermitidas });
 
-    // Send welcome email (fire-and-forget)
-    sendBienvenidaUsuario({ to: email, nombre, username, password, rol }).catch(() => {});
+    // Send welcome email (fire-and-forget). NUNCA enviamos la contraseña por correo.
+    sendBienvenidaUsuario({ to: email, nombre, username, rol }).catch(() => {});
 
     return res.status(201).json({ success: true, data: user });
   } catch (e: any) {
     if (e?.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ success: false, message: 'Email o username ya existe' });
     }
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -66,7 +66,7 @@ export async function update(req: Request, res: Response) {
     if (e?.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ success: false, message: 'Email o username ya existe' });
     }
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -80,6 +80,6 @@ export async function remove(req: Request, res: Response) {
     if (!deleted) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     return res.json({ success: true, message: 'Usuario eliminado' });
   } catch (e) {
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }

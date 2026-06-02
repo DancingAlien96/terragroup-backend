@@ -1,6 +1,14 @@
 import { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 
+function getJwtSecret(): string {
+  const s = process.env.JWT_SECRET;
+  if (!s || s.length < 16 || s === 'secret' || s === 'changeme') {
+    throw new Error('JWT_SECRET no está configurado o es inseguro.');
+  }
+  return s;
+}
+
 interface JwtPayload {
   sub: number;
   empresaId: number;
@@ -18,7 +26,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
 
   const token = authorization.replace('Bearer ', '');
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET ?? 'secret') as unknown as JwtPayload;
+    const payload = jwt.verify(token, getJwtSecret()) as unknown as JwtPayload;
     req.user = {
       id: payload.sub,
       empresaId: payload.empresaId,

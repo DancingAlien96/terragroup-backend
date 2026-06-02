@@ -9,7 +9,7 @@ export async function list(req: Request, res: Response) {
     return res.json({ success: true, data: await svc.listPagos(req.user!.empresaId) });
   } catch (e: any) {
     if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -20,7 +20,7 @@ export async function get(req: Request, res: Response) {
     return res.json({ success: true, data: item });
   } catch (e: any) {
     if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -71,7 +71,7 @@ export async function create(req: Request, res: Response) {
     return res.status(201).json({ success: true, data: item });
   } catch (e: any) {
     if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -88,7 +88,7 @@ export async function update(req: Request, res: Response) {
     return res.json({ success: true, data: item });
   } catch (e: any) {
     if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -104,6 +104,6 @@ export async function remove(req: Request, res: Response) {
     return res.json({ success: true, message: 'Pago eliminado' });
   } catch (e: any) {
     if (e?.name === 'ValidationError') return res.status(400).json({ success: false, message: e.message });
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }

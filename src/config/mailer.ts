@@ -184,7 +184,7 @@ export async function sendBienvenidaUsuario(opts: {
   to: string;
   nombre: string;
   username: string;
-  password: string;
+  // password ya no se envía por email — el admin que crea el usuario debe comunicarla por canal seguro
   rol: string;
 }) {
   const ROL: Record<string, string> = { admin: 'Administrador', supervisor: 'Supervisor', vendedor: 'Vendedor' };
@@ -198,16 +198,13 @@ export async function sendBienvenidaUsuario(opts: {
         <td style="font-size:14px;color:#1a1a1a;font-weight:bold;font-family:monospace;">${opts.username}</td>
       </tr></table></td></tr>
       <tr><td style="padding:6px 0;"><table width="100%"><tr>
-        <td style="font-size:13px;color:#888;width:120px;">Contraseña</td>
-        <td style="font-size:14px;color:#1a1a1a;font-weight:bold;font-family:monospace;">${opts.password}</td>
-      </tr></table></td></tr>
-      <tr><td style="padding:6px 0;"><table width="100%"><tr>
         <td style="font-size:13px;color:#888;width:120px;">Rol</td>
         <td style="font-size:14px;color:#1a1a1a;">${ROL[opts.rol] ?? opts.rol}</td>
       </tr></table></td></tr>
     </table>
 
-    <p style="font-size:13px;color:#888;margin:0;">Por seguridad, te recomendamos cambiar tu contraseña al iniciar sesión por primera vez.</p>
+    <p style="font-size:13px;color:#555;margin:0 0 12px;">Tu contraseña inicial te la entregará personalmente el administrador que creó la cuenta. <strong>Por seguridad nunca enviamos contraseñas por correo.</strong></p>
+    <p style="font-size:13px;color:#888;margin:0;">Cambia tu contraseña al iniciar sesión por primera vez.</p>
   `;
 
   await transporter.sendMail({

@@ -22,7 +22,7 @@ export async function simular(req: Request, res: Response) {
     });
     return res.json({ success: true, data: cuotas });
   } catch (e) {
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -34,7 +34,7 @@ export async function getPlanByVenta(req: Request, res: Response) {
     if (!result) return res.status(404).json({ success: false, message: 'Venta no encontrada' });
     return res.json({ success: true, data: result });
   } catch (e) {
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -56,7 +56,7 @@ export async function liquidar(req: Request, res: Response) {
     });
     return res.json({ success: true, data: result });
   } catch (e) {
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }
 
@@ -81,6 +81,6 @@ export async function regenerar(req: Request, res: Response) {
     });
     return res.json({ success: true, message: `Plan regenerado (${generadas} cuotas)` });
   } catch (e) {
-    return res.status(500).json({ success: false, message: String(e) });
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }

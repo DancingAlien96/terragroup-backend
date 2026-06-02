@@ -42,6 +42,17 @@ export function verifyPassword(password: string, hashed: string) {
   return bcrypt.compare(password, hashed);
 }
 
+/** Lee el secret obligatoriamente — sin fallback. Lanza si falta o es trivial. */
+function getJwtSecret(): string {
+  const s = process.env.JWT_SECRET;
+  if (!s || s.length < 16 || s === 'secret' || s === 'changeme') {
+    throw new Error(
+      'JWT_SECRET no está configurado o es inseguro. Define una cadena aleatoria de al menos 16 caracteres en el entorno.',
+    );
+  }
+  return s;
+}
+
 export function signJwt(user: Pick<UsuarioModel, 'id' | 'empresaId' | 'rol' | 'username'>) {
   const payload = {
     sub:       user.id,
@@ -49,13 +60,11 @@ export function signJwt(user: Pick<UsuarioModel, 'id' | 'empresaId' | 'rol' | 'u
     rol:       user.rol,
     username:  user.username,
   };
-  const secret = process.env.JWT_SECRET ?? 'secret';
-  return jwt.sign(payload, secret as jwt.Secret, {
+  return jwt.sign(payload, getJwtSecret() as jwt.Secret, {
     expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   } as jwt.SignOptions);
 }
 
 export function parseJwt(token: string) {
-  const secret = process.env.JWT_SECRET ?? 'secret';
-  return jwt.verify(token, secret as jwt.Secret);
+  return jwt.verify(token, getJwtSecret() as jwt.Secret);
 }

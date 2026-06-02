@@ -33,6 +33,9 @@ services:
       PORT: 4000
       JWT_SECRET: ${JWT_SECRET:-terragroup_secret_2024}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      NODE_ENV: production
+      # CSV de orígenes permitidos para CORS. Sin esta var en prod, todo origen es bloqueado.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,https://terragroup-frontend.vercel.app,http://192.168.1.140:3000}
       MAIL_USER: ${MAIL_USER}
       MAIL_PASS: ${MAIL_PASS}
       MAIL_FROM: ${MAIL_FROM}

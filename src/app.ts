@@ -22,7 +22,25 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+/**
+ * CORS: solo permite orígenes en CORS_ORIGINS (CSV).
+ * Si CORS_ORIGINS no está definido, en desarrollo permite localhost; en prod bloquea.
+ * Requests sin origen (curl, mobile apps, mismo-origen) se permiten.
+ */
+const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+const isDev = process.env.NODE_ENV !== 'production';
+const devFallback = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);                       // server-to-server / curl
+    const list = allowedOrigins.length > 0 ? allowedOrigins : (isDev ? devFallback : []);
+    if (list.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS: origen no permitido (${origin})`));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
