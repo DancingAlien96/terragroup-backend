@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as svc from './ventas.service.js';
 import { sendComprobanteEnganche } from '../../config/mailer.js';
+import { sendBienvenidaClienteWA } from '../../config/whatsapp.js';
 import { logAudit } from '../../utils/audit.js';
 
 /** Aplana una venta+propietario+lote al shape "flat" que el frontend espera. */
@@ -119,6 +120,16 @@ export async function create(req: Request, res: Response) {
       metodoPago:       item.metodoPago,
       entidadBancaria:  item.entidadBancaria,
     }).catch((err) => console.error('[mailer] Error enviando comprobante de enganche:', err));
+
+    // WhatsApp de bienvenida al cliente (fire-and-forget)
+    sendBienvenidaClienteWA({
+      to:            item.propietario.telefono,
+      clienteNombre: item.propietario.nombre,
+      lote:          item.descripcionLote ?? item.lote?.clave ?? 'Sin lote',
+      precioTotal:   Number(item.precioTotal),
+      numCuotas:     item.numCuotas,
+      valorCuota:    Number(item.valorCuota),
+    }).catch(() => {});
 
     return res.status(201).json({ success: true, data: shape(item) });
   } catch (e: any) {

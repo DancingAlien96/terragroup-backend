@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import * as svc from './pagos.service.js';
 import prisma from '../../config/prisma.js';
 import { sendPagoConfirmado } from '../../config/mailer.js';
+import { sendPagoConfirmadoWA } from '../../config/whatsapp.js';
 import { logAudit } from '../../utils/audit.js';
 
 export async function list(req: Request, res: Response) {
@@ -37,33 +38,43 @@ export async function create(req: Request, res: Response) {
       descripcion: `Pago recibo #${item.num_recibo} · ${item.propietario_nombre} · Q${item.monto}`,
     });
 
-    // Enviar correo de confirmación (fire-and-forget) si el propietario tiene email
+    // Notificar al cliente (email + WhatsApp), fire-and-forget.
     if (item.venta_id) {
       (async () => {
         try {
           const venta = await prisma.venta.findUnique({
             where:  { id: item.venta_id! },
             select: {
-              propietario:     { select: { nombre: true, email: true } },
+              propietario:     { select: { nombre: true, email: true, telefono: true } },
               descripcionLote: true,
               lote:            { select: { clave: true } },
             },
           });
-          const email = venta?.propietario?.email;
-          if (email) {
-            const fecha = item.fecha_pago
-              ? new Date(item.fecha_pago).toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' })
-              : new Date().toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' });
+          if (!venta) return;
+          const lote  = venta.descripcionLote ?? venta.lote?.clave ?? 'Sin lote';
+          const fecha = item.fecha_pago
+            ? new Date(item.fecha_pago).toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' })
+            : new Date().toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' });
+
+          if (venta.propietario.email) {
             await sendPagoConfirmado({
-              to:            email,
-              clienteNombre: venta!.propietario.nombre,
-              lote:          venta!.descripcionLote ?? venta!.lote?.clave ?? 'Sin lote',
+              to:            venta.propietario.email,
+              clienteNombre: venta.propietario.nombre,
+              lote,
               monto:         Number(item.monto),
               numCuota:      item.num_cuota,
               fecha,
               referencia:    item.referencia,
             });
           }
+          // WhatsApp en paralelo (no bloquea email)
+          sendPagoConfirmadoWA({
+            to:            venta.propietario.telefono,
+            clienteNombre: venta.propietario.nombre,
+            monto:         Number(item.monto),
+            lote,
+            numCuota:      item.num_cuota,
+          }).catch(() => {});
         } catch { /* silencioso */ }
       })();
     }

@@ -39,6 +39,13 @@ services:
       MAIL_USER: ${MAIL_USER}
       MAIL_PASS: ${MAIL_PASS}
       MAIL_FROM: ${MAIL_FROM}
+      # WhatsApp Cloud API (Meta). Templates: pago_confirmado, recordatorio_cuota,
+      # cuota_vencida, bienvenida_cliente. Sin estas vars, los mensajes se ignoran.
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      WHATSAPP_DEFAULT_COUNTRY: ${WHATSAPP_DEFAULT_COUNTRY:-502}
+      WHATSAPP_API_VERSION: ${WHATSAPP_API_VERSION:-v21.0}
+      WHATSAPP_RECORDATORIO_DIAS: ${WHATSAPP_RECORDATORIO_DIAS:-3}
     depends_on:
       db:
         condition: service_healthy
