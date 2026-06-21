@@ -20,6 +20,7 @@ import {
   EstadoVenta,
 } from '../../generated/prisma/enums.js';
 import { generarPlanVenta, regenerarPlanVenta } from '../amortizacion/amortizacion.service.js';
+import { deleteFileIfLocal } from '../../utils/files.js';
 import {
   between,
   intNonNegative,
@@ -338,8 +339,21 @@ export async function updateVenta(
 /* ── Eliminación ──────────────────────────────────────────── */
 
 export async function deleteVenta(id: number, empresaId: number): Promise<boolean> {
-  const venta = await prisma.venta.findFirst({ where: { id, empresaId } });
+  const venta = await prisma.venta.findFirst({
+    where: { id, empresaId },
+    include: {
+      pagos:       { select: { comprobanteUrl: true } },
+      expedientes: { select: { archivoUrl: true } },
+    },
+  });
   if (!venta) return false;
+
+  // Recolectamos URLs de archivos locales para borrarlos del disco después del commit
+  const filesToDelete: (string | null)[] = [
+    venta.comprobanteEngancheUrl,
+    ...venta.pagos.map((p) => p.comprobanteUrl),
+    ...venta.expedientes.map((e) => e.archivoUrl),
+  ];
 
   await prisma.$transaction(async (tx) => {
     // Cascada en pagos/expedientes está configurada en el schema; basta con borrar la venta
@@ -353,5 +367,10 @@ export async function deleteVenta(id: number, empresaId: number): Promise<boolea
       });
     }
   });
+
+  // Después del commit, liberamos espacio en disco (no bloquea ni revierte la transacción)
+  for (const url of filesToDelete) {
+    if (url) await deleteFileIfLocal(url);
+  }
   return true;
 }

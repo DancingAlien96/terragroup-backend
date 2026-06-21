@@ -46,9 +46,13 @@ services:
       WHATSAPP_DEFAULT_COUNTRY: ${WHATSAPP_DEFAULT_COUNTRY:-502}
       WHATSAPP_API_VERSION: ${WHATSAPP_API_VERSION:-v21.0}
       WHATSAPP_RECORDATORIO_DIAS: ${WHATSAPP_RECORDATORIO_DIAS:-3}
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   db_data:
+  uploads:

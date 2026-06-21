@@ -1,6 +1,7 @@
 import prisma from '../../config/prisma.js';
 import { EstadoCuenta, EstadoPago } from '../../generated/prisma/enums.js';
 import { optionalString, positive, ValidationError } from '../../utils/validate.js';
+import { deleteFileIfLocal } from '../../utils/files.js';
 
 const includeDetalle = {
   venta: {
@@ -170,6 +171,15 @@ export async function updatePago(
 }
 
 export async function deletePago(id: number, empresaId: number): Promise<boolean> {
+  const existing = await prisma.pago.findFirst({
+    where:  { id, empresaId },
+    select: { comprobanteUrl: true },
+  });
+  if (!existing) return false;
   const result = await prisma.pago.deleteMany({ where: { id, empresaId } });
+  if (result.count > 0 && existing.comprobanteUrl) {
+    // Libera el espacio en disco (solo si el URL es local)
+    await deleteFileIfLocal(existing.comprobanteUrl);
+  }
   return result.count > 0;
 }

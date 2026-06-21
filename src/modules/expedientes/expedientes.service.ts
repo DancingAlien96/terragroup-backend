@@ -1,4 +1,5 @@
 import prisma from '../../config/prisma.js';
+import { deleteFileIfLocal } from '../../utils/files.js';
 
 export const MAX_EXPEDIENTES_POR_VENTA = 3;
 
@@ -25,6 +26,14 @@ export async function createExpediente(
 }
 
 export async function deleteExpediente(id: number, empresaId: number): Promise<boolean> {
+  const existing = await prisma.expediente.findFirst({
+    where:  { id, empresaId },
+    select: { archivoUrl: true },
+  });
+  if (!existing) return false;
   const result = await prisma.expediente.deleteMany({ where: { id, empresaId } });
+  if (result.count > 0 && existing.archivoUrl) {
+    await deleteFileIfLocal(existing.archivoUrl);
+  }
   return result.count > 0;
 }

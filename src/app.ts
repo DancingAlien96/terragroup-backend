@@ -1,7 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import prisma from './config/prisma.js';
+import { UPLOADS_DIR } from './utils/files.js';
+import uploadsRoutes from './modules/uploads/uploads.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import usuariosRoutes from './modules/usuarios/usuarios.routes.js';
 import lotesRoutes from './modules/lotes/lotes.routes.js';
@@ -65,6 +68,14 @@ app.use('/api/ventas',         ventasRoutes);
 app.use('/api/expedientes',    expedientesRoutes);
 app.use('/api/amortizacion',   amortizacionRoutes);
 app.use('/api/audit',          auditRoutes);
+app.use('/api/uploads',        uploadsRoutes);
+
+// Servir archivos subidos como estáticos. Los URLs son UUIDs no adivinables.
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+app.use('/uploads', express.static(UPLOADS_DIR, {
+  maxAge: '7d',
+  index:  false,
+}));
 
 app.get('/', (_req, res) => {
   res.json({ success: true, message: 'TerraGroup backend running' });
