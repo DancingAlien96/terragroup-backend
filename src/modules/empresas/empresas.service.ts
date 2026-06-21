@@ -185,7 +185,15 @@ export async function updateEmpresa(
 
 /** Estadísticas globales para el panel super-admin. */
 export async function getGlobalStats() {
-  const [empresasActivas, empresasTotal, usuariosTotal, ventasTotal, empresasPagadas, pagosVencidos] = await Promise.all([
+  const ahora     = new Date();
+  const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(),     1);
+  const inicioMesAnterior = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
+
+  const [
+    empresasActivas, empresasTotal, usuariosTotal, ventasTotal,
+    empresasPagadas, empresasPagadasMesAnterior, registrosMes, pagosVencidos,
+    empresasPorPlan, empresasParaSerie,
+  ] = await Promise.all([
     prisma.empresa.count({ where: { activo: true } }),
     prisma.empresa.count(),
     prisma.usuario.count({ where: { rol: { not: Rol.superadmin } } }),
@@ -193,21 +201,80 @@ export async function getGlobalStats() {
     // Empresas que pagaron el SaaS — sea por Recurrente (pagoSuscripcionId
     // = "in_..." o "pi_...") o activación manual desde admin ("MANUAL:...").
     prisma.empresa.count({ where: { activo: true, pagoSuscripcionId: { not: null } } }),
+    // Para el delta del mes: pagadas hasta antes de iniciado este mes.
+    prisma.empresa.count({
+      where: { activo: true, pagoSuscripcionId: { not: null }, updatedAt: { lt: inicioMes } },
+    }),
+    prisma.empresa.count({ where: { createdAt: { gte: inicioMes } } }),
     prisma.pago.count({ where: { estado: 'vencido' } }),
+    // Distribución por plan (para el donut). Devuelve [{planId, _count}].
+    prisma.empresa.groupBy({
+      by:      ['planId'],
+      where:   { activo: true },
+      _count:  { id: true },
+    }),
+    // Empresas con pago en los últimos 6 meses para serie temporal.
+    // Usamos updatedAt como proxy de "fecha de activación" — funciona porque
+    // entre que se crea (inactiva) y se activa por webhook normalmente solo
+    // hay una actualización; si super-admin la toggleó después, contaría como
+    // mes del toggle. Aceptable para gráfica.
+    prisma.empresa.findMany({
+      where: {
+        activo: true,
+        pagoSuscripcionId: { not: null },
+        updatedAt: { gte: new Date(ahora.getFullYear(), ahora.getMonth() - 5, 1) },
+      },
+      select: { updatedAt: true },
+    }),
   ]);
-  // Ingresos del SaaS = empresas pagadas × monto único actual. Se asume
-  // mismo precio histórico para todas. Si el precio sube, las viejas
-  // empresas siguen contando al precio actual (simplificación aceptada).
+
   const montoUsd = Number(process.env.RECURRENTE_MONTO_CENTS ?? '200000') / 100;
-  const ingresosSaas = empresasPagadas * montoUsd;
+  const ingresosSaas              = empresasPagadas              * montoUsd;
+  const ingresosMesAnteriorTotal  = empresasPagadasMesAnterior   * montoUsd;
+  const ingresosDeltaMes          = ingresosSaas - ingresosMesAnteriorTotal;
+
+  // Tasa de activación: % de empresas creadas que ya pagaron.
+  const tasaActivacion = empresasTotal > 0 ? Math.round((empresasPagadas / empresasTotal) * 100) : 0;
+
+  // Resuelve nombres de planes en una query.
+  const planIds      = empresasPorPlan.map((p) => p.planId);
+  const planes       = planIds.length > 0
+    ? await prisma.plan.findMany({ where: { id: { in: planIds } }, select: { id: true, nombre: true } })
+    : [];
+  const planNombreById = new Map(planes.map((p) => [p.id, p.nombre]));
+  const distribPlanes  = empresasPorPlan.map((p) => ({
+    plan:  planNombreById.get(p.planId) ?? `Plan ${p.planId}`,
+    count: p._count.id,
+  }));
+
+  // Serie temporal — agrupa por YYYY-MM. Garantiza presencia de los 6 meses
+  // (rellena con 0 los que no tienen activaciones).
+  const ingresosPorMes: { mes: string; monto: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d   = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    ingresosPorMes.push({ mes: key, monto: 0 });
+  }
+  for (const e of empresasParaSerie) {
+    const d   = e.updatedAt;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const slot = ingresosPorMes.find((s) => s.mes === key);
+    if (slot) slot.monto += montoUsd;
+  }
+
   return {
-    empresas_activas: empresasActivas,
-    empresas_total:   empresasTotal,
-    usuarios_total:   usuariosTotal,
-    contratos_total:  ventasTotal,                 // alias para no romper UI
-    ventas_total:     ventasTotal,
-    empresas_pagadas: empresasPagadas,
-    ingresos_total:   ingresosSaas,                // USD
-    pagos_vencidos:   pagosVencidos,
+    empresas_activas:    empresasActivas,
+    empresas_total:      empresasTotal,
+    usuarios_total:      usuariosTotal,
+    contratos_total:     ventasTotal,             // alias para no romper UI
+    ventas_total:        ventasTotal,
+    empresas_pagadas:    empresasPagadas,
+    registros_mes:       registrosMes,
+    ingresos_total:      ingresosSaas,            // USD
+    ingresos_delta_mes:  ingresosDeltaMes,        // USD vs mes anterior
+    tasa_activacion:     tasaActivacion,          // 0–100
+    pagos_vencidos:      pagosVencidos,
+    distribucion_planes: distribPlanes,           // [{plan, count}]
+    ingresos_por_mes:    ingresosPorMes,          // [{mes:"YYYY-MM", monto}]
   };
 }
