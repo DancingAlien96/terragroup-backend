@@ -21,8 +21,24 @@ const DEFAULT_PLAN_ID = Number(process.env.DEFAULT_PLAN_ID ?? '1');
  * Registro público: crea empresa (inactiva) + usuario admin, luego abre un
  * checkout en Recurrente. La empresa se activa cuando llega el webhook
  * intent.succeeded. NO devuelve JWT — el usuario no puede entrar hasta pagar.
+ *
+ * Si el email/username ya existe pero pertenece a una empresa pendiente de
+ * pago (inactiva y sin pagoSuscripcionId), se limpia para permitir el retry.
+ * Esto cubre el caso del usuario que cerró la pasarela sin completar el pago
+ * y vuelve a intentar.
  */
 export async function registerEmpresa(data: RegisterPayload) {
+  const conflicting = await prisma.usuario.findMany({
+    where: { OR: [{ email: data.email_admin }, { username: data.username_admin }] },
+    include: { empresa: { select: { id: true, activo: true, pagoSuscripcionId: true } } },
+  });
+  for (const u of conflicting) {
+    if (!u.empresa.activo && !u.empresa.pagoSuscripcionId) {
+      // Cascade onDelete elimina al usuario junto con la empresa.
+      await prisma.empresa.delete({ where: { id: u.empresaId } });
+    }
+  }
+
   const hashed = await bcrypt.hash(data.password_admin, 10);
 
   const { empresaId, userId, empresaNombre } = await prisma.$transaction(async (tx) => {
