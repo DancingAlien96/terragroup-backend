@@ -51,8 +51,18 @@ export async function registerEmpresa(data: RegisterPayload) {
     return { empresaId: empresa.id, userId: usuario.id, empresaNombre: empresa.nombre };
   });
 
-  const { checkout_url } = await createCheckout({ empresaId, usuarioId: userId, empresaNombre });
-  return { empresaId, userId, checkoutUrl: checkout_url };
+  // Si Recurrente falla (config mala, API caída), revertimos manualmente
+  // empresa+usuario para no dejar huérfanos en BD. La transacción no puede
+  // abrazar la llamada HTTP — sería antipatrón mantener un tx abierto durante
+  // I/O externo.
+  try {
+    const { checkout_url } = await createCheckout({ empresaId, usuarioId: userId, empresaNombre });
+    return { empresaId, userId, checkoutUrl: checkout_url };
+  } catch (err) {
+    await prisma.usuario.delete({ where: { id: userId } }).catch(() => {});
+    await prisma.empresa.delete({ where: { id: empresaId } }).catch(() => {});
+    throw err;
+  }
 }
 
 /** Detalle de una empresa con estadísticas (totales). */
