@@ -99,20 +99,21 @@ async function empresaWithStats(empresaId: number) {
     prisma.venta.count({ where: { empresaId } }),
   ]);
   return {
-    id:             e.id,
-    nombre:         e.nombre,
-    email:          e.email,
-    telefono:       e.telefono,
-    rfc:            e.rfc,
-    plan_id:        e.planId,
-    plan_nombre:    e.plan.nombre,
-    activo:         e.activo,
-    fecha_inicio:   e.fechaInicio,
-    fecha_vence:    e.fechaVence,
-    created_at:     e.createdAt,
-    total_usuarios: totalUsuarios,
-    total_lotes:    totalLotes,
-    total_ventas:   totalVentas,
+    id:                  e.id,
+    nombre:              e.nombre,
+    email:               e.email,
+    telefono:            e.telefono,
+    rfc:                 e.rfc,
+    plan_id:             e.planId,
+    plan_nombre:         e.plan.nombre,
+    activo:              e.activo,
+    fecha_inicio:        e.fechaInicio,
+    fecha_vence:         e.fechaVence,
+    pago_suscripcion_id: e.pagoSuscripcionId,    // para distinguir pagadas vs activas-manualmente
+    created_at:          e.createdAt,
+    total_usuarios:      totalUsuarios,
+    total_lotes:         totalLotes,
+    total_ventas:        totalVentas,
   };
 }
 
@@ -187,12 +188,16 @@ export async function updateEmpresa(
 export async function getGlobalStats() {
   const ahora     = new Date();
   const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(),     1);
-  const inicioMesAnterior = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
+  // Ventana de 12 meses para el gráfico de crecimiento MoM.
+  const inicio12meses = new Date(ahora.getFullYear(), ahora.getMonth() - 11, 1);
+  // Ventana de 6 meses para la serie de ingresos.
+  const inicio6meses  = new Date(ahora.getFullYear(), ahora.getMonth() - 5,  1);
 
   const [
     empresasActivas, empresasTotal, usuariosTotal, ventasTotal,
     empresasPagadas, empresasPagadasMesAnterior, registrosMes, pagosVencidos,
     empresasPorPlan, empresasParaSerie,
+    gmvAgg, cobranzaAgg, registrosHistorico, activacionesHistorico,
   ] = await Promise.all([
     prisma.empresa.count({ where: { activo: true } }),
     prisma.empresa.count(),
@@ -213,16 +218,29 @@ export async function getGlobalStats() {
       where:   { activo: true },
       _count:  { id: true },
     }),
-    // Empresas con pago en los últimos 6 meses para serie temporal.
-    // Usamos updatedAt como proxy de "fecha de activación" — funciona porque
-    // entre que se crea (inactiva) y se activa por webhook normalmente solo
-    // hay una actualización; si super-admin la toggleó después, contaría como
-    // mes del toggle. Aceptable para gráfica.
+    // Empresas con pago en los últimos 6 meses para serie temporal de ingresos.
     prisma.empresa.findMany({
       where: {
         activo: true,
         pagoSuscripcionId: { not: null },
-        updatedAt: { gte: new Date(ahora.getFullYear(), ahora.getMonth() - 5, 1) },
+        updatedAt: { gte: inicio6meses },
+      },
+      select: { updatedAt: true },
+    }),
+    // GMV: suma de precio_total de todas las ventas en todas las empresas.
+    prisma.venta.aggregate({ _sum: { precioTotal: true } }),
+    // Salud de cobranza global: cuotas agrupadas por estado.
+    prisma.pago.groupBy({ by: ['estado'], _count: { id: true } }),
+    // Registros por mes (12 meses) — usa createdAt.
+    prisma.empresa.findMany({
+      where:  { createdAt: { gte: inicio12meses } },
+      select: { createdAt: true },
+    }),
+    // Activaciones por mes (12 meses) — empresas con pago suscripción.
+    prisma.empresa.findMany({
+      where:  {
+        pagoSuscripcionId: { not: null },
+        updatedAt: { gte: inicio12meses },
       },
       select: { updatedAt: true },
     }),
@@ -247,8 +265,7 @@ export async function getGlobalStats() {
     count: p._count.id,
   }));
 
-  // Serie temporal — agrupa por YYYY-MM. Garantiza presencia de los 6 meses
-  // (rellena con 0 los que no tienen activaciones).
+  // Serie temporal de ingresos — agrupa por YYYY-MM últimos 6 meses.
   const ingresosPorMes: { mes: string; monto: number }[] = [];
   for (let i = 5; i >= 0; i--) {
     const d   = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
@@ -261,6 +278,38 @@ export async function getGlobalStats() {
     const slot = ingresosPorMes.find((s) => s.mes === key);
     if (slot) slot.monto += montoUsd;
   }
+
+  // Crecimiento MoM — registros vs activaciones por mes (12 meses).
+  const crecimientoMensual: { mes: string; registros: number; activaciones: number }[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d   = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    crecimientoMensual.push({ mes: key, registros: 0, activaciones: 0 });
+  }
+  for (const e of registrosHistorico) {
+    const key = `${e.createdAt.getFullYear()}-${String(e.createdAt.getMonth() + 1).padStart(2, '0')}`;
+    const slot = crecimientoMensual.find((s) => s.mes === key);
+    if (slot) slot.registros++;
+  }
+  for (const e of activacionesHistorico) {
+    const key = `${e.updatedAt.getFullYear()}-${String(e.updatedAt.getMonth() + 1).padStart(2, '0')}`;
+    const slot = crecimientoMensual.find((s) => s.mes === key);
+    if (slot) slot.activaciones++;
+  }
+
+  // Salud de cobranza global — counts agrupados por estado.
+  const cobranzaSalud = {
+    pagados:    cobranzaAgg.find((p) => p.estado === 'pagado')?._count.id    ?? 0,
+    pendientes: cobranzaAgg.find((p) => p.estado === 'pendiente')?._count.id ?? 0,
+    vencidos:   cobranzaAgg.find((p) => p.estado === 'vencido')?._count.id   ?? 0,
+  };
+
+  // Embudo de conversión all-time.
+  const conversionFunnel = {
+    registros:      empresasTotal,
+    pagaron:        empresasPagadas,
+    conversion_pct: empresasTotal > 0 ? Math.round((empresasPagadas / empresasTotal) * 100) : 0,
+  };
 
   return {
     empresas_activas:    empresasActivas,
@@ -275,6 +324,11 @@ export async function getGlobalStats() {
     tasa_activacion:     tasaActivacion,          // 0–100
     pagos_vencidos:      pagosVencidos,
     distribucion_planes: distribPlanes,           // [{plan, count}]
-    ingresos_por_mes:    ingresosPorMes,          // [{mes:"YYYY-MM", monto}]
+    ingresos_por_mes:    ingresosPorMes,          // [{mes, monto}]
+    // Nuevas métricas:
+    gmv_gestionado:      Number(gmvAgg._sum.precioTotal ?? 0),   // GTQ — suma de precio_total de todas las ventas
+    cobranza_salud:      cobranzaSalud,           // {pagados, pendientes, vencidos}
+    conversion_funnel:   conversionFunnel,        // {registros, pagaron, conversion_pct}
+    crecimiento_mensual: crecimientoMensual,      // [{mes, registros, activaciones}] últimos 12 meses
   };
 }
