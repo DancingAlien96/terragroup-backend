@@ -71,10 +71,20 @@ app.use('/api/audit',          auditRoutes);
 app.use('/api/uploads',        uploadsRoutes);
 
 // Servir archivos subidos como estáticos. Los URLs son UUIDs no adivinables.
+// Headers de seguridad:
+//   - X-Content-Type-Options: nosniff → el browser no infiere MIME (bloquea
+//     ejecutar HTML/SVG disfrazado de imagen).
+//   - Content-Security-Policy con sandbox → si por algún motivo el contenido
+//     se renderiza como HTML, no puede ejecutar scripts ni acceder a cookies.
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 app.use('/uploads', express.static(UPLOADS_DIR, {
   maxAge: '7d',
   index:  false,
+  setHeaders: (res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; sandbox");
+    res.setHeader('Referrer-Policy', 'no-referrer');
+  },
 }));
 
 app.get('/', (_req, res) => {

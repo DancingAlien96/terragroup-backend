@@ -15,15 +15,25 @@ import path from 'path';
 export const UPLOADS_DIR = process.env.UPLOADS_DIR
   ?? path.join(process.cwd(), 'uploads');
 
-/** ¿La URL apunta a un archivo local de este servidor? */
+/**
+ * ¿La URL apunta a un archivo local de este servidor?
+ *
+ * Estricto: solo URLs que arrancan exactamente con "/uploads/" (path absoluto).
+ * Rechaza:
+ *   - "//evil.com/uploads/..."  (URL protocol-relative externa)
+ *   - "https://evil.com/uploads/..." (URL absoluta externa)
+ *   - "uploads/..." sin / inicial (relativa)
+ */
 export function isLocalUrl(url: string | null | undefined): boolean {
   if (!url) return false;
-  return url.startsWith('/uploads/') || url.includes('/uploads/');
+  const u = url.trim();
+  return u.startsWith('/uploads/') && !u.startsWith('//');
 }
 
-/** Extrae el nombre de archivo de un URL local. */
+/** Extrae el nombre de archivo de un URL local "/uploads/<name>". */
 export function localFilename(url: string): string | null {
-  const m = url.match(/\/uploads\/([^/?#]+)$/);
+  if (!isLocalUrl(url)) return null;
+  const m = url.match(/^\/uploads\/([^/?#]+)$/);
   return m ? m[1] : null;
 }
 
