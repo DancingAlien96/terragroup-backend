@@ -139,9 +139,30 @@ export function getEmpresa(id: number) {
 }
 
 export async function toggleEmpresa(id: number): Promise<void> {
-  const e = await prisma.empresa.findUnique({ where: { id }, select: { activo: true } });
+  const e = await prisma.empresa.findUnique({
+    where: { id },
+    select: { activo: true, pagoSuscripcionId: true, fechaInicio: true },
+  });
   if (!e) return;
-  await prisma.empresa.update({ where: { id }, data: { activo: !e.activo } });
+
+  const nuevoActivo = !e.activo;
+  const data: { activo: boolean; pagoSuscripcionId?: string; fechaInicio?: Date } = {
+    activo: nuevoActivo,
+  };
+
+  // Activación manual desde el panel super-admin: si la empresa nunca
+  // completó el pago vía webhook (pagoSuscripcionId == null), la marcamos
+  // con el prefijo MANUAL para:
+  //   1) Sacarla de la lista de "pendientes de pago" (la lógica de retry
+  //      del registro no la borrará al ver el mismo email).
+  //   2) Que cuente como ingreso del SaaS (presumiblemente el admin
+  //      activó porque hubo un pago externo a Recurrente).
+  if (nuevoActivo && !e.pagoSuscripcionId) {
+    data.pagoSuscripcionId = `MANUAL:${Date.now()}`;
+    if (!e.fechaInicio) data.fechaInicio = new Date();
+  }
+
+  await prisma.empresa.update({ where: { id }, data });
 }
 
 export async function updateEmpresaPlan(id: number, planId: number): Promise<void> {
@@ -164,21 +185,29 @@ export async function updateEmpresa(
 
 /** Estadísticas globales para el panel super-admin. */
 export async function getGlobalStats() {
-  const [empresasActivas, empresasTotal, usuariosTotal, ventasTotal, ingresosAgg, pagosVencidos] = await Promise.all([
+  const [empresasActivas, empresasTotal, usuariosTotal, ventasTotal, empresasPagadas, pagosVencidos] = await Promise.all([
     prisma.empresa.count({ where: { activo: true } }),
     prisma.empresa.count(),
     prisma.usuario.count({ where: { rol: { not: Rol.superadmin } } }),
     prisma.venta.count(),
-    prisma.pago.aggregate({ where: { estado: 'pagado' }, _sum: { monto: true } }),
+    // Empresas que pagaron el SaaS — sea por Recurrente (pagoSuscripcionId
+    // = "in_..." o "pi_...") o activación manual desde admin ("MANUAL:...").
+    prisma.empresa.count({ where: { activo: true, pagoSuscripcionId: { not: null } } }),
     prisma.pago.count({ where: { estado: 'vencido' } }),
   ]);
+  // Ingresos del SaaS = empresas pagadas × monto único actual. Se asume
+  // mismo precio histórico para todas. Si el precio sube, las viejas
+  // empresas siguen contando al precio actual (simplificación aceptada).
+  const montoUsd = Number(process.env.RECURRENTE_MONTO_CENTS ?? '200000') / 100;
+  const ingresosSaas = empresasPagadas * montoUsd;
   return {
     empresas_activas: empresasActivas,
     empresas_total:   empresasTotal,
     usuarios_total:   usuariosTotal,
     contratos_total:  ventasTotal,                 // alias para no romper UI
     ventas_total:     ventasTotal,
-    ingresos_total:   Number(ingresosAgg._sum.monto ?? 0),
+    empresas_pagadas: empresasPagadas,
+    ingresos_total:   ingresosSaas,                // USD
     pagos_vencidos:   pagosVencidos,
   };
 }
