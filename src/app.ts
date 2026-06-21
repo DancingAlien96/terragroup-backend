@@ -20,6 +20,7 @@ import ventasRoutes from './modules/ventas/ventas.routes.js';
 import expedientesRoutes from './modules/expedientes/expedientes.routes.js';
 import auditRoutes from './modules/audit/audit.routes.js';
 import amortizacionRoutes from './modules/amortizacion/amortizacion.routes.js';
+import recurrenteWebhookRoutes from './modules/webhooks/recurrente.routes.js';
 
 dotenv.config();
 
@@ -44,6 +45,10 @@ app.use(cors({
   },
   credentials: true,
 }));
+// Webhook de Recurrente — debe ir ANTES de express.json para preservar
+// el raw body que Svix necesita para verificar la firma HMAC.
+app.use('/api/webhooks/recurrente', express.raw({ type: '*/*' }), recurrenteWebhookRoutes);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

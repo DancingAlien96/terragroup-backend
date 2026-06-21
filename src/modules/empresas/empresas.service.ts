@@ -1,35 +1,39 @@
 import bcrypt from 'bcryptjs';
 import prisma from '../../config/prisma.js';
 import { Rol } from '../../generated/prisma/enums.js';
-import { signJwt } from '../auth/auth.service.js';
+import { createCheckout } from '../../config/recurrente.js';
 
 export interface RegisterPayload {
   empresa_nombre: string;
   empresa_email?: string;
   empresa_telefono?: string;
-  plan_id: number;
+  // plan_id es opcional; si no viene se usa DEFAULT_PLAN_ID (modelo de pago único).
+  plan_id?: number;
   nombre_admin: string;
   email_admin: string;
   username_admin: string;
   password_admin: string;
 }
 
-/** Registro público: crea empresa + usuario admin en una transacción. */
-export async function registerEmpresa(data: RegisterPayload) {
-  const trial = new Date();
-  trial.setDate(trial.getDate() + 30);
+const DEFAULT_PLAN_ID = Number(process.env.DEFAULT_PLAN_ID ?? '1');
 
+/**
+ * Registro público: crea empresa (inactiva) + usuario admin, luego abre un
+ * checkout en Recurrente. La empresa se activa cuando llega el webhook
+ * intent.succeeded. NO devuelve JWT — el usuario no puede entrar hasta pagar.
+ */
+export async function registerEmpresa(data: RegisterPayload) {
   const hashed = await bcrypt.hash(data.password_admin, 10);
 
-  return prisma.$transaction(async (tx) => {
+  const { empresaId, userId, empresaNombre } = await prisma.$transaction(async (tx) => {
     const empresa = await tx.empresa.create({
       data: {
         nombre:      data.empresa_nombre,
         email:       data.empresa_email ?? null,
         telefono:    data.empresa_telefono ?? null,
-        planId:      data.plan_id,
-        fechaInicio: new Date(),
-        fechaVence:  trial,
+        planId:      data.plan_id ?? DEFAULT_PLAN_ID,
+        activo:      false,
+        fechaInicio: null,
       },
     });
 
@@ -44,9 +48,11 @@ export async function registerEmpresa(data: RegisterPayload) {
       },
     });
 
-    const token = signJwt(usuario);
-    return { empresaId: empresa.id, userId: usuario.id, token };
+    return { empresaId: empresa.id, userId: usuario.id, empresaNombre: empresa.nombre };
   });
+
+  const { checkout_url } = await createCheckout({ empresaId, usuarioId: userId, empresaNombre });
+  return { empresaId, userId, checkoutUrl: checkout_url };
 }
 
 /** Detalle de una empresa con estadísticas (totales). */
@@ -77,6 +83,15 @@ async function empresaWithStats(empresaId: number) {
     total_lotes:    totalLotes,
     total_ventas:   totalVentas,
   };
+}
+
+/** Estado mínimo, usado por el polling público de /register/exito. */
+export async function getEmpresaEstado(id: number) {
+  const e = await prisma.empresa.findUnique({
+    where: { id },
+    select: { id: true, activo: true },
+  });
+  return e;
 }
 
 export async function listEmpresas() {

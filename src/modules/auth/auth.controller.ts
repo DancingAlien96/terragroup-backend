@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import prisma from '../../config/prisma.js';
 import { findUserByUsername, verifyPassword, signJwt, getUserWithPlan } from './auth.service.js';
 
 export async function login(req: Request, res: Response) {
@@ -20,6 +21,19 @@ export async function login(req: Request, res: Response) {
 
   if (!user.activo) {
     return res.status(403).json({ success: false, message: 'User is inactive' });
+  }
+
+  // Bloquea login si la empresa no está activa (suscripción no pagada).
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: user.empresaId },
+    select: { activo: true },
+  });
+  if (!empresa?.activo) {
+    return res.status(402).json({
+      success: false,
+      code:    'EMPRESA_INACTIVA',
+      message: 'Tu cuenta está pendiente de activación. Completa el pago para acceder.',
+    });
   }
 
   const token = signJwt(user);

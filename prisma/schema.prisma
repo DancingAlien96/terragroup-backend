@@ -68,17 +68,20 @@ model Plan {
 }
 
 model Empresa {
-  id           Int       @id @default(autoincrement())
-  nombre       String    @db.VarChar(150)
-  email        String?   @db.VarChar(150)
-  telefono     String?   @db.VarChar(20)
-  rfc          String?   @db.VarChar(20)
-  planId       Int       @map("plan_id")
-  activo       Boolean   @default(true)
-  fechaInicio  DateTime? @map("fecha_inicio") @db.Date
-  fechaVence   DateTime? @map("fecha_vence") @db.Date
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id                  Int       @id @default(autoincrement())
+  nombre              String    @db.VarChar(150)
+  email               String?   @db.VarChar(150)
+  telefono            String?   @db.VarChar(20)
+  rfc                 String?   @db.VarChar(20)
+  planId              Int       @map("plan_id")
+  activo              Boolean   @default(true)
+  fechaInicio         DateTime? @map("fecha_inicio") @db.Date
+  fechaVence          DateTime? @map("fecha_vence") @db.Date
+  // ID del intent/checkout de Recurrente que activó la suscripción.
+  // Usado para idempotencia del webhook (un mismo intent no activa dos veces).
+  pagoSuscripcionId   String?   @map("pago_suscripcion_id") @db.VarChar(100)
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   plan            Plan            @relation(fields: [planId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   usuarios        Usuario[]
