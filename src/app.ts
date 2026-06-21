@@ -47,8 +47,10 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Forzar UTF-8 en todas las respuestas JSON
-app.use((_req, res, next) => {
+// Forzar UTF-8 en respuestas JSON (solo en /api). NO aplicar globalmente:
+// express.static no sobreescribe Content-Type si ya está seteado, así que un
+// header global rompe la entrega de imágenes/PDFs en /uploads.
+app.use('/api', (_req, res, next) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   next();
 });
