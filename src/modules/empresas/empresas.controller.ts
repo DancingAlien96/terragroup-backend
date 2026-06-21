@@ -16,11 +16,13 @@ export async function register(req: Request, res: Response) {
     });
     return res.status(201).json({ success: true, data: result });
   } catch (err: any) {
-    if (err.code === 'ER_DUP_ENTRY') {
+    // P2002 = Prisma unique constraint violation. ER_DUP_ENTRY es el code del
+    // driver de MySQL; lo dejamos por si algún día bypaseamos Prisma.
+    if (err?.code === 'P2002' || err?.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ success: false, message: 'El email o username ya está registrado' });
     }
-    console.error(err);
-    return res.status(500).json({ success: false, message: err?.message ?? 'Error al registrar empresa' });
+    console.error('[register] error inesperado:', err);
+    return res.status(500).json({ success: false, message: 'Error al registrar empresa' });
   }
 }
 
