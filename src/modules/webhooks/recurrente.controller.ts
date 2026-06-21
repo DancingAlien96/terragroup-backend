@@ -17,17 +17,33 @@ import prisma from '../../config/prisma.js';
 
 const WEBHOOK_SECRET = process.env.RECURRENTE_WEBHOOK_SECRET ?? '';
 
+interface RecurrenteMetadata {
+  empresa_id?: string;
+  usuario_id?: string;
+}
+
 interface RecurrenteWebhookPayload {
-  type?:       string;        // "payment"
+  type?:       string;        // "payment", "bank_transfer", etc.
   event_type?: string;        // "intent.succeeded", "intent.failed", etc.
   status?:     string;        // "succeeded", "failed", ...
-  id?:         string;        // pi_xxx — usado para idempotencia
+  id?:         string;        // in_xxx / pi_xxx — usado para idempotencia
   customer?:   { id?: string; email?: string; full_name?: string };
-  checkout?:   { id?: string; status?: string };
-  metadata?:   { empresa_id?: string; usuario_id?: string };
+  checkout?:   { id?: string; status?: string; metadata?: RecurrenteMetadata };
+  metadata?:   RecurrenteMetadata;
+  data?:       { metadata?: RecurrenteMetadata };
   amount_in_cents?: number;
   currency?:   string;
   created_at?: string;
+}
+
+/**
+ * Recurrente no documenta exactamente dónde pone la metadata del checkout
+ * en el payload del webhook intent.succeeded — la doc solo describe el
+ * "envelope + payment data + details". Buscamos en los tres lugares más
+ * probables (raíz, checkout.metadata, data.metadata).
+ */
+function extractMetadata(p: RecurrenteWebhookPayload): RecurrenteMetadata {
+  return p.metadata ?? p.checkout?.metadata ?? p.data?.metadata ?? {};
 }
 
 export async function recurrenteWebhook(req: Request, res: Response): Promise<void> {
@@ -64,10 +80,14 @@ export async function recurrenteWebhook(req: Request, res: Response): Promise<vo
     return;
   }
 
-  const empresaIdStr = payload.metadata?.empresa_id;
+  const metadata = extractMetadata(payload);
+  const empresaIdStr = metadata.empresa_id;
   const intentId     = payload.id;
   if (!empresaIdStr || !intentId) {
-    console.warn('[webhook-recurrente] Falta metadata.empresa_id o id en payload');
+    // Logueamos las claves de primer nivel del payload para diagnosticar
+    // dónde está la metadata si Recurrente la pone en un lugar inesperado.
+    const topKeys = Object.keys(payload as Record<string, unknown>).join(',');
+    console.warn(`[webhook-recurrente] Falta metadata.empresa_id; topKeys=${topKeys} checkout.metadata=${JSON.stringify(payload.checkout?.metadata)} metadata=${JSON.stringify(payload.metadata)}`);
     res.json({ ok: true, skipped: 'missing metadata' });
     return;
   }
