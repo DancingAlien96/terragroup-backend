@@ -8,9 +8,10 @@
 
 import { Router } from 'express';
 import { recurrenteWebhook } from './recurrente.controller.js';
+import { webhookLimiter } from '../../middlewares/rateLimit.middleware.js';
 
 const router = Router();
 
-router.post('/', recurrenteWebhook);
+router.post('/', webhookLimiter, recurrenteWebhook);
 
 export default router;

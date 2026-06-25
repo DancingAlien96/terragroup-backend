@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import { superadminMiddleware } from '../../middlewares/superadmin.middleware.js';
+import { registerLimiter } from '../../middlewares/rateLimit.middleware.js';
 import * as ctrl from './empresas.controller.js';
 
 const router = Router();
 
 // Público: registro de nueva empresa
-router.post('/register', ctrl.register);
+router.post('/register', registerLimiter, ctrl.register);
 
 // Público: consulta de estado para polling tras pago (solo devuelve {id, activo}).
 router.get('/:id/estado', ctrl.getEstadoEmpresa);

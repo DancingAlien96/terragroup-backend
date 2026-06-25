@@ -12,6 +12,7 @@
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@sentry/node": "^10.60.0",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^8.0.0",
     "bcryptjs": "^2.4.3",

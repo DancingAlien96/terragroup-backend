@@ -1,3 +1,6 @@
+// IMPORTANTE: instrument.ts debe ir primero para que Sentry instrumente
+// los módulos siguientes (HTTP, Express, fs, etc.) correctamente.
+import './instrument.js';
 import dotenv from 'dotenv';
 import app from './app.js';
 import { iniciarJobRecordatorioPagos } from './jobs/recordatorioPagos.js';

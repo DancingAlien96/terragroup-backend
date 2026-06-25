@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import * as Sentry from '@sentry/node';
 import prisma from './config/prisma.js';
 import { UPLOADS_DIR } from './utils/files.js';
 import uploadsRoutes from './modules/uploads/uploads.routes.js';
@@ -25,6 +26,12 @@ import recurrenteWebhookRoutes from './modules/webhooks/recurrente.routes.js';
 dotenv.config();
 
 const app = express();
+
+// Necesario detrás de un reverse proxy (nginx, Cloudflare, Caddy) para que
+// req.ip sea el IP REAL del cliente (vía X-Forwarded-For), no el del proxy.
+// Sin esto, express-rate-limit cuenta todo desde un solo IP y se rompe el
+// rate limiting. El valor '1' = confiar en un solo proxy upstream.
+app.set('trust proxy', 1);
 
 /**
  * CORS: solo permite orígenes en CORS_ORIGINS (CSV).
@@ -106,5 +113,10 @@ app.get('/health', async (_req, res) => {
     res.status(500).json({ success: false, message: 'Database connection failed', error: String(error) });
   }
 });
+
+// Sentry error handler — DEBE ir después de TODAS las rutas y antes de
+// otros error middlewares. Captura errores no manejados de Express y los
+// envía a Sentry; sin esto los errores 500 quedan solo en la consola.
+Sentry.setupExpressErrorHandler(app);
 
 export default app;
