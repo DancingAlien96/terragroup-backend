@@ -12,6 +12,10 @@ router.post('/register', registerLimiter, ctrl.register);
 // Público: consulta de estado para polling tras pago (solo devuelve {id, activo}).
 router.get('/:id/estado', ctrl.getEstadoEmpresa);
 
+// Empresa logueada: ver y cancelar su propia suscripción.
+router.get('/mi-suscripcion',            authMiddleware, ctrl.getMiSuscripcion);
+router.post('/mi-suscripcion/cancelar',  authMiddleware, ctrl.cancelarMiSuscripcion);
+
 // Solo super-admin
 router.get('/',              authMiddleware, superadminMiddleware, ctrl.listEmpresas);
 router.get('/stats',         authMiddleware, superadminMiddleware, ctrl.getGlobalStats);

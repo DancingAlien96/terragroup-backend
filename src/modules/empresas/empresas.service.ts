@@ -22,28 +22,42 @@ const DEFAULT_PLAN_ID = Number(process.env.DEFAULT_PLAN_ID ?? '1');
 
 /**
  * Registro público: crea empresa (inactiva) + usuario admin, luego abre un
- * checkout en Recurrente. La empresa se activa cuando llega el webhook
- * intent.succeeded. NO devuelve JWT — el usuario no puede entrar hasta pagar.
+ * checkout con free trial en Recurrente. La empresa se activa al webhook
+ * setup_intent.succeeded (cuando el cliente guarda la tarjeta). NO devuelve
+ * JWT — el usuario no puede entrar hasta tener el trial corriendo.
  *
- * Retry de registro abandonado: si el email/username ya existe en una empresa
- * pendiente de pago (inactiva y sin pagoSuscripcionId), se permite el retry
- * SOLO si el solicitante prueba ser el dueño legítimo enviando la misma
- * contraseña que usó originalmente. Sin esa prueba un atacante podría
- * secuestrar registros pendientes ajenos mandando el email de la víctima.
+ * Anti-abuse del trial:
+ *   - Si el email del admin YA inició un trial alguna vez (trialInicio !=
+ *     null) → rechaza. Esto evita que la misma persona cree cuentas nuevas
+ *     para conseguir trials infinitos.
+ *   - El check se aplica antes de cualquier escritura para no dejar rastro.
+ *
+ * Retry de registro abandonado (mismo modelo que antes):
+ *   - Si el email pertenece a una empresa "pendiente" (trial no iniciado),
+ *     se permite el retry SOLO si el password matchea (anti-hijack).
  */
 export async function registerEmpresa(data: RegisterPayload) {
   const conflicting = await prisma.usuario.findMany({
     where: { OR: [{ email: data.email_admin }, { username: data.username_admin }] },
-    include: { empresa: { select: { id: true, activo: true, pagoSuscripcionId: true } } },
+    include: { empresa: { select: {
+      id: true, activo: true, pagoSuscripcionId: true,
+      trialInicio: true, estadoSuscripcion: true,
+    } } },
   });
   for (const u of conflicting) {
+    // Anti-abuse: si ya inició trial alguna vez, lo bloqueamos.
+    if (u.empresa.trialInicio !== null) {
+      throw Object.assign(
+        new Error('Esta cuenta ya disfrutó del período de prueba. Para acceder al sistema, contáctanos a soporte@piums.io.'),
+        { code: 'TRIAL_ALREADY_USED' },
+      );
+    }
+    // Retry abandonado: empresa pendiente (sin trial iniciado) → solo el
+    // titular original puede reclamar el slot.
     const pendiente = !u.empresa.activo && !u.empresa.pagoSuscripcionId;
     if (!pendiente) continue;
-    // Solo el titular original (mismo password) puede reclamar el registro
-    // abandonado. Si no matchea, dejamos la fila — abajo caerá en P2002 → 409.
     const esMismoUsuario = await bcrypt.compare(data.password_admin, u.password);
     if (!esMismoUsuario) continue;
-    // Cascade onDelete elimina al usuario junto con la empresa.
     await prisma.empresa.delete({ where: { id: u.empresaId } });
   }
 
@@ -128,6 +142,71 @@ export async function getEmpresaEstado(id: number) {
     select: { id: true, activo: true },
   });
   return e;
+}
+
+/**
+ * Datos del trial/suscripción para mostrar en banner y panel.
+ * Solo lectura — no expone datos sensibles.
+ */
+export async function getSuscripcionInfo(empresaId: number) {
+  const e = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: {
+      estadoSuscripcion: true,
+      trialInicio:       true,
+      trialFin:          true,
+      suscripcionId:     true,
+    },
+  });
+  if (!e) return null;
+  const ahora = new Date();
+  const diasRestantes = e.trialFin
+    ? Math.max(0, Math.ceil((e.trialFin.getTime() - ahora.getTime()) / (1000 * 60 * 60 * 24)))
+    : null;
+  return {
+    estado:          e.estadoSuscripcion,
+    trial_inicio:    e.trialInicio,
+    trial_fin:       e.trialFin,
+    dias_restantes:  diasRestantes,
+    puede_cancelar:  e.estadoSuscripcion === 'trial' || e.estadoSuscripcion === 'pago_fallido',
+  };
+}
+
+/**
+ * Cancela la suscripción de la empresa desde su propio panel admin.
+ * El webhook subscription.cancel actualiza el estado.
+ * Idempotente: si ya está cancelada o pagada, no falla.
+ */
+export async function cancelarSuscripcionEmpresa(empresaId: number) {
+  const e = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { suscripcionId: true, estadoSuscripcion: true },
+  });
+  if (!e) return { ok: false, message: 'Empresa no encontrada' };
+  // Si ya pagó, no se puede "cancelar" — el contrato ya se ejecutó.
+  if (e.estadoSuscripcion === 'pagada') {
+    return { ok: false, message: 'La suscripción ya fue pagada y no puede cancelarse' };
+  }
+  if (e.estadoSuscripcion === 'cancelada') {
+    return { ok: true, already_canceled: true };
+  }
+  if (!e.suscripcionId) {
+    // Sin id de suscripción en Recurrente, marcamos local nomás.
+    await prisma.empresa.update({
+      where: { id: empresaId },
+      data:  { activo: false, estadoSuscripcion: 'cancelada' },
+    });
+    return { ok: true, marked_local: true };
+  }
+  const { cancelSubscription } = await import('../../config/recurrente.js');
+  await cancelSubscription(e.suscripcionId);
+  // El webhook subscription.cancel hará el update final. Por las dudas
+  // también lo marcamos acá (idempotente).
+  await prisma.empresa.update({
+    where: { id: empresaId },
+    data:  { activo: false, estadoSuscripcion: 'cancelada' },
+  });
+  return { ok: true };
 }
 
 export async function listEmpresas() {

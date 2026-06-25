@@ -13,6 +13,8 @@ export interface UserWithPlan {
   empresa_nombre: string;
   plan: string;
   secciones_permitidas: string | null;
+  estado_suscripcion: string;     // 'trial' | 'pagada' | 'pago_fallido' | 'cancelada' | 'pendiente'
+  trial_fin: Date | null;
 }
 
 export function findUserByUsername(username: string) {
@@ -35,6 +37,8 @@ export async function getUserWithPlan(userId: number): Promise<UserWithPlan | nu
     empresa_nombre:       u.empresa.nombre,
     plan:                 u.empresa.plan.nombre,
     secciones_permitidas: u.seccionesPermitidas,
+    estado_suscripcion:   u.empresa.estadoSuscripcion,
+    trial_fin:            u.empresa.trialFin,
   };
 }
 

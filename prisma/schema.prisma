@@ -51,6 +51,20 @@ enum EntidadBancaria {
   BAC
 }
 
+// Estado del ciclo de vida de la suscripción SaaS.
+//   pendiente     → empresa registrada, todavía no inició trial (no hay tarjeta)
+//   trial         → tarjeta guardada, 14 días gratis corriendo
+//   pagada        → trial superado, $2,000 cobrados, acceso perpetuo
+//   pago_fallido  → trial venció, cobro del día 15 falló; en gracia
+//   cancelada     → cliente canceló durante trial o tras fallo de pago
+enum EstadoSuscripcion {
+  pendiente
+  trial
+  pagada
+  pago_fallido
+  cancelada
+}
+
 // ── Modelos ───────────────────────────────────────────────────
 
 model Plan {
@@ -79,11 +93,19 @@ model Empresa {
   fechaVence          DateTime? @map("fecha_vence") @db.Date
   // ID del intent/checkout de Recurrente que activó la suscripción.
   // Usado para idempotencia del webhook (un mismo intent no activa dos veces).
-  pagoSuscripcionId   String?   @map("pago_suscripcion_id") @db.VarChar(100)
+  pagoSuscripcionId   String?            @map("pago_suscripcion_id") @db.VarChar(100)
+  // ID de la subscription en Recurrente (sub_xxx) — necesario para cancelarla
+  // desde el panel del admin o vía API.
+  suscripcionId       String?            @map("suscripcion_id") @db.VarChar(100)
+  // Estado del ciclo de vida (pendiente → trial → pagada / pago_fallido / cancelada).
+  estadoSuscripcion   EstadoSuscripcion  @default(pendiente) @map("estado_suscripcion")
+  // Trial: inicio (cuando llegó setup_intent.succeeded) y fin (+14 días).
+  trialInicio         DateTime?          @map("trial_inicio")
+  trialFin            DateTime?          @map("trial_fin")
   // Momento exacto en que el admin aceptó los términos y la política de
   // privacidad durante el registro. Evidencia legal de consentimiento.
-  aceptoTerminosEn    DateTime? @map("acepto_terminos_en")
-  createdAt           DateTime  @default(now()) @map("created_at")
+  aceptoTerminosEn    DateTime?          @map("acepto_terminos_en")
+  createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
   plan            Plan            @relation(fields: [planId], references: [id], onUpdate: Cascade, onDelete: Restrict)

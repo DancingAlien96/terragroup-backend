@@ -30,6 +30,12 @@ export async function register(req: Request, res: Response) {
     });
     return res.status(201).json({ success: true, data: result });
   } catch (err: any) {
+    if (err?.code === 'TRIAL_ALREADY_USED') {
+      return res.status(409).json({
+        success: false, code: 'TRIAL_ALREADY_USED',
+        message: err.message,
+      });
+    }
     // P2002 = Prisma unique constraint violation. ER_DUP_ENTRY es el code del
     // driver de MySQL; lo dejamos por si algún día bypaseamos Prisma.
     if (err?.code === 'P2002' || err?.code === 'ER_DUP_ENTRY') {
@@ -37,6 +43,37 @@ export async function register(req: Request, res: Response) {
     }
     console.error('[register] error inesperado:', err);
     return res.status(500).json({ success: false, message: 'Error al registrar empresa' });
+  }
+}
+
+/**
+ * Devuelve info de la suscripción (trial, días restantes, puede_cancelar)
+ * para el admin de la empresa logueada — usado por el banner del dashboard.
+ */
+export async function getMiSuscripcion(req: Request, res: Response) {
+  try {
+    const empresaId = req.user?.empresaId;
+    if (!empresaId) return res.status(401).json({ success: false, message: 'No autorizado' });
+    const info = await EmpresasService.getSuscripcionInfo(empresaId);
+    if (!info) return res.status(404).json({ success: false, message: 'Empresa no encontrada' });
+    return res.json({ success: true, data: info });
+  } catch (err) {
+    console.error('[mi-suscripcion]', err);
+    return res.status(500).json({ success: false, message: 'Error al obtener suscripción' });
+  }
+}
+
+/** Cancelar la suscripción de la empresa logueada (solo durante trial). */
+export async function cancelarMiSuscripcion(req: Request, res: Response) {
+  try {
+    const empresaId = req.user?.empresaId;
+    if (!empresaId) return res.status(401).json({ success: false, message: 'No autorizado' });
+    const result = await EmpresasService.cancelarSuscripcionEmpresa(empresaId);
+    if (!result.ok) return res.status(400).json({ success: false, message: result.message });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[cancelar-suscripcion]', err);
+    return res.status(500).json({ success: false, message: 'Error al cancelar suscripción' });
   }
 }
 
