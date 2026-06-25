@@ -1,18 +1,18 @@
 /**
- * Job diario: Recordatorio de pagos en mora
+ * Job diario: Recordatorio de pagos en mora — POR EMPRESA.
  *
  * Se ejecuta cada día a las 08:00 AM (zona America/Guatemala).
- * Calcula qué ventas tienen cuotas vencidas sin pago y envía un resumen
- * al administrador del sistema (MAIL_USER) para que verifique pagos físicos
- * aún no capturados.
  *
- * NOTA multi-tenant: el reporte mezcla todas las empresas, ya que el destino
- * es el admin del sistema (no los admins de cada tenant).
+ * Agrupa las ventas por empresa, calcula qué cuotas están vencidas sin pago
+ * de cada una, y envía un email SEPARADO a los administradores de cada
+ * empresa (los datos de cobranza son privados de cada tenant — TerraGroup
+ * NO recibe esta información).
  */
 
 import cron from 'node-cron';
 import prisma from '../config/prisma.js';
 import transporter from '../config/mailer.js';
+import { getEmpresaAdminEmails } from '../utils/empresaEmails.js';
 
 function addMonths(d: Date, months: number): Date {
   const r = new Date(d);
@@ -30,74 +30,71 @@ function fmt(n: number): string {
   return new Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ', maximumFractionDigits: 0 }).format(n);
 }
 
-async function ejecutarRecordatorio() {
-  const today = new Date();
-  today.setHours(23, 59, 59, 0);
+interface MoraCliente {
+  nombre: string;
+  lote: string;
+  cuotasVencidas: number;
+  montoVencido: number;
+  dias: number;
+  esNuevoHoy: boolean;
+}
 
-  try {
-    const ventas = await prisma.venta.findMany({
-      where: { estado: { not: 'cancelado' } },
-      include: {
-        propietario: { select: { nombre: true } },
-        lote:        { select: { clave: true } },
-        pagos:       { select: { numCuota: true } },
-      },
+/** Calcula la lista de clientes en mora de UNA empresa específica. */
+function calcularMoraDeEmpresa(
+  ventas: Array<{
+    numCuotas: number;
+    valorCuota: { toString: () => string } | number;
+    cuotaInicio: number | null;
+    fechaInicio: Date;
+    descripcionLote: string | null;
+    propietario: { nombre: string };
+    lote: { clave: string } | null;
+    pagos: { numCuota: number | null }[];
+  }>,
+  today: Date,
+): MoraCliente[] {
+  const enMora: MoraCliente[] = [];
+  for (const v of ventas) {
+    const numCuotas   = v.numCuotas;
+    const valorCuota  = Number(v.valorCuota);
+    const cuotaInicio = v.cuotaInicio ?? 1;
+    if (numCuotas <= 0 || valorCuota <= 0) continue;
+
+    const fechaInicio = new Date(v.fechaInicio);
+    const fechasVencidas: Date[] = [];
+    for (let i = 1; i <= numCuotas; i++) {
+      const due = addMonths(fechaInicio, i);
+      if (due <= today) fechasVencidas.push(due);
+      else break;
+    }
+    const cuotasPrevias = Math.max(0, cuotaInicio - 1);
+    const cuotasVencidas = fechasVencidas.length - v.pagos.length - cuotasPrevias;
+    if (cuotasVencidas <= 0) continue;
+
+    const cuotaMasAntigua = fechasVencidas[v.pagos.length + cuotasPrevias];
+    const dias = cuotaMasAntigua
+      ? Math.floor((today.getTime() - cuotaMasAntigua.getTime()) / 86_400_000)
+      : 0;
+
+    enMora.push({
+      nombre:         v.propietario.nombre,
+      lote:           v.descripcionLote ?? v.lote?.clave ?? '—',
+      cuotasVencidas,
+      montoVencido:   cuotasVencidas * valorCuota,
+      dias,
+      esNuevoHoy:     dias <= 1,
     });
-    if (ventas.length === 0) return;
+  }
+  return enMora;
+}
 
-    interface MoraCliente {
-      nombre: string;
-      lote: string;
-      cuotasVencidas: number;
-      montoVencido: number;
-      dias: number;
-      esNuevoHoy: boolean;
-    }
-    const enMora: MoraCliente[] = [];
+/** Construye el HTML del email de mora para los datos de UNA empresa. */
+function buildHtmlMora(empresaNombre: string, enMora: MoraCliente[]): string {
+  enMora.sort((a, b) => (b.esNuevoHoy ? 1 : 0) - (a.esNuevoHoy ? 1 : 0) || b.dias - a.dias);
+  const totalMora = enMora.reduce((s, c) => s + c.montoVencido, 0);
+  const nuevosHoy = enMora.filter((c) => c.esNuevoHoy);
 
-    for (const v of ventas) {
-      const numCuotas   = v.numCuotas;
-      const valorCuota  = Number(v.valorCuota);
-      const cuotaInicio = v.cuotaInicio ?? 1;
-      if (numCuotas <= 0 || valorCuota <= 0) continue;
-
-      const fechaInicio = new Date(v.fechaInicio);
-
-      const fechasVencidas: Date[] = [];
-      for (let i = 1; i <= numCuotas; i++) {
-        const due = addMonths(fechaInicio, i);
-        if (due <= today) fechasVencidas.push(due);
-        else break;
-      }
-      const cuotasPrevias = Math.max(0, cuotaInicio - 1);
-      const cuotasVencidas = fechasVencidas.length - v.pagos.length - cuotasPrevias;
-      if (cuotasVencidas <= 0) continue;
-
-      const cuotaMasAntigua = fechasVencidas[v.pagos.length + cuotasPrevias];
-      const dias = cuotaMasAntigua
-        ? Math.floor((today.getTime() - cuotaMasAntigua.getTime()) / 86_400_000)
-        : 0;
-
-      enMora.push({
-        nombre:         v.propietario.nombre,
-        lote:           v.descripcionLote ?? v.lote?.clave ?? '—',
-        cuotasVencidas,
-        montoVencido:   cuotasVencidas * valorCuota,
-        dias,
-        esNuevoHoy:     dias <= 1,
-      });
-    }
-
-    if (enMora.length === 0) {
-      console.log('[cron] Sin clientes en mora hoy. No se envía recordatorio.');
-      return;
-    }
-
-    enMora.sort((a, b) => (b.esNuevoHoy ? 1 : 0) - (a.esNuevoHoy ? 1 : 0) || b.dias - a.dias);
-    const totalMora = enMora.reduce((s, c) => s + c.montoVencido, 0);
-    const nuevosHoy = enMora.filter((c) => c.esNuevoHoy);
-
-    const filas = enMora.map((c) => {
+  const filas = enMora.map((c) => {
       const { label, color } = estadoMora(c.dias);
       const bgRow = c.esNuevoHoy ? 'background:#fffbeb;' : '';
       return `
@@ -125,16 +122,16 @@ async function ejecutarRecordatorio() {
         </p>
       </div>` : '';
 
-    const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><title>Recordatorio de pagos</title></head>
+<head><meta charset="UTF-8"><title>Recordatorio de pagos — ${empresaNombre}</title></head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;">
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
         <tr>
           <td style="background:#1a1a1a;padding:22px 32px;">
-            <span style="font-size:20px;font-weight:bold;color:#d4a843;">TerraGroup</span>
+            <span style="font-size:20px;font-weight:bold;color:#d4a843;">${empresaNombre}</span>
             <span style="font-size:12px;color:#888;margin-left:10px;">Recordatorio diario de pagos</span>
           </td>
         </tr>
@@ -180,25 +177,76 @@ async function ejecutarRecordatorio() {
           </table>
 
           <p style="margin:20px 0 0;font-size:12px;color:#aaa;text-align:center;">
-            Este recordatorio se envía automáticamente cada día a las 8:00 AM · TerraGroup Sistema de Gestión
+            Recordatorio diario · 8:00 AM · TerraGroup Sistema de Gestión
           </p>
         </td></tr>
       </table>
     </td></tr>
   </table>
 </body></html>`;
+}
 
-    const adminEmail = process.env.MAIL_USER!;
-    const FROM = process.env.MAIL_FROM ?? `"TerraGroup" <${adminEmail}>`;
+async function ejecutarRecordatorio() {
+  const today = new Date();
+  today.setHours(23, 59, 59, 0);
 
-    await transporter.sendMail({
-      from: FROM,
-      to: adminEmail,
-      subject: `📋 TerraGroup — ${enMora.length} cliente(s) en mora${nuevosHoy.length > 0 ? ` (${nuevosHoy.length} nuevo(s) hoy)` : ''} · ${new Date().toLocaleDateString('es-GT')}`,
-      html,
+  try {
+    // Solo procesamos empresas activas — no tiene sentido mandar mails a
+    // empresas suspendidas o canceladas.
+    const empresas = await prisma.empresa.findMany({
+      where:  { activo: true },
+      select: { id: true, nombre: true },
     });
+    if (empresas.length === 0) return;
 
-    console.log(`[cron] Recordatorio enviado a ${adminEmail}. Clientes en mora: ${enMora.length}, nuevos hoy: ${nuevosHoy.length}`);
+    const FROM = process.env.MAIL_FROM ?? `"TerraGroup" <${process.env.MAIL_USER}>`;
+
+    let totalEnviados = 0;
+    let totalSinDestinatario = 0;
+    let totalSinMora = 0;
+
+    for (const empresa of empresas) {
+      const ventas = await prisma.venta.findMany({
+        where: { empresaId: empresa.id, estado: { not: 'cancelado' } },
+        include: {
+          propietario: { select: { nombre: true } },
+          lote:        { select: { clave: true } },
+          pagos:       { select: { numCuota: true } },
+        },
+      });
+      if (ventas.length === 0) continue;
+
+      const enMora = calcularMoraDeEmpresa(ventas, today);
+      if (enMora.length === 0) {
+        totalSinMora++;
+        continue;
+      }
+
+      const destinatarios = await getEmpresaAdminEmails(empresa.id);
+      if (destinatarios.length === 0) {
+        console.warn(`[cron] Empresa "${empresa.nombre}" (id=${empresa.id}) tiene ${enMora.length} en mora pero NO tiene admin emails — skip`);
+        totalSinDestinatario++;
+        continue;
+      }
+
+      const html = buildHtmlMora(empresa.nombre, enMora);
+      const nuevosHoy = enMora.filter((c) => c.esNuevoHoy).length;
+
+      try {
+        await transporter.sendMail({
+          from:    FROM,
+          to:      destinatarios.join(', '),
+          subject: `📋 ${empresa.nombre} — ${enMora.length} cliente(s) en mora${nuevosHoy > 0 ? ` (${nuevosHoy} nuevo(s) hoy)` : ''} · ${new Date().toLocaleDateString('es-GT')}`,
+          html,
+        });
+        totalEnviados++;
+        console.log(`[cron] Enviado a ${destinatarios.length} admin(s) de "${empresa.nombre}" — ${enMora.length} en mora`);
+      } catch (err) {
+        console.error(`[cron] Error enviando a "${empresa.nombre}":`, err);
+      }
+    }
+
+    console.log(`[cron] Resumen: ${totalEnviados} empresas notificadas, ${totalSinMora} sin mora, ${totalSinDestinatario} sin destinatarios.`);
   } catch (err) {
     console.error('[cron] Error en recordatorio de pagos:', err);
   }

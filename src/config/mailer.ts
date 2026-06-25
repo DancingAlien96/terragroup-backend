@@ -217,7 +217,8 @@ export async function sendBienvenidaUsuario(opts: {
 
 /* ── Email: comprobante de registro de enganche ──────────────── */
 export async function sendComprobanteEnganche(opts: {
-  to: string | null;
+  to: string | null;                  // email del propietario (puede ser null)
+  empresaAdminEmails: string[];       // emails del dueño de la empresa (admins)
   clienteNombre: string;
   descripcionLote: string | null;
   precioNeto: number;
@@ -229,11 +230,23 @@ export async function sendComprobanteEnganche(opts: {
   metodoPago: string | null;
   entidadBancaria: string | null;
 }) {
-  // Always CC the company admin account
-  const adminEmail = process.env.MAIL_USER!;
-  const recipients = opts.to
-    ? [opts.to, adminEmail].filter((v, i, a) => a.indexOf(v) === i)  // deduplicate
-    : [adminEmail];
+  // El comprobante se envía al propietario y a TODOS los admins de la empresa
+  // contratante (no a la cuenta del SaaS). Si no hay destinatarios reales,
+  // saltamos el envío para no fallar la transacción.
+  const seen = new Set<string>();
+  const recipients: string[] = [];
+  const add = (e: string | null | undefined) => {
+    const t = e?.trim().toLowerCase();
+    if (!t || seen.has(t)) return;
+    seen.add(t);
+    recipients.push(e!.trim());
+  };
+  add(opts.to);
+  for (const e of opts.empresaAdminEmails) add(e);
+  if (recipients.length === 0) {
+    console.warn('[mail] sendComprobanteEnganche sin destinatarios — skip');
+    return;
+  }
 
   const fmt = (n: number) =>
     new Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ' }).format(n);

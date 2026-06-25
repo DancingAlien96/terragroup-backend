@@ -3,6 +3,7 @@ import * as svc from './ventas.service.js';
 import { sendComprobanteEnganche } from '../../config/mailer.js';
 import { sendBienvenidaClienteWA } from '../../config/whatsapp.js';
 import { logAudit } from '../../utils/audit.js';
+import { getEmpresaAdminEmails } from '../../utils/empresaEmails.js';
 
 /** Aplana una venta+propietario+lote al shape "flat" que el frontend espera. */
 function shape(v: any) {
@@ -106,20 +107,24 @@ export async function create(req: Request, res: Response) {
       descripcion: `Venta a ${item.propietario.nombre}${item.descripcionLote ? ` · ${item.descripcionLote}` : ''}`,
     });
 
-    // Fire-and-forget: enviar comprobante de enganche (al admin siempre, al propietario si tiene email)
-    sendComprobanteEnganche({
-      to:               item.propietario.email,
-      clienteNombre:    item.propietario.nombre,
-      descripcionLote:  item.descripcionLote ?? item.lote?.clave ?? null,
-      precioNeto:       Number(item.precioTotal),
-      enganche:         Number(item.enganche),
-      numCuotas:        item.numCuotas,
-      valorCuota:       Number(item.valorCuota),
-      fechaDeposito:    item.fechaInicio.toISOString().slice(0, 10),
-      numTransferencia: item.numTransferencia,
-      metodoPago:       item.metodoPago,
-      entidadBancaria:  item.entidadBancaria,
-    }).catch((err) => console.error('[mailer] Error enviando comprobante de enganche:', err));
+    // Fire-and-forget: comprobante al propietario y a los admins de la empresa
+    // (NO a la cuenta del SaaS — cada empresa recibe sus propios comprobantes).
+    getEmpresaAdminEmails(req.user!.empresaId).then((empresaAdminEmails) =>
+      sendComprobanteEnganche({
+        to:                 item.propietario.email,
+        empresaAdminEmails,
+        clienteNombre:      item.propietario.nombre,
+        descripcionLote:    item.descripcionLote ?? item.lote?.clave ?? null,
+        precioNeto:         Number(item.precioTotal),
+        enganche:           Number(item.enganche),
+        numCuotas:          item.numCuotas,
+        valorCuota:         Number(item.valorCuota),
+        fechaDeposito:      item.fechaInicio.toISOString().slice(0, 10),
+        numTransferencia:   item.numTransferencia,
+        metodoPago:         item.metodoPago,
+        entidadBancaria:    item.entidadBancaria,
+      }),
+    ).catch((err) => console.error('[mailer] Error enviando comprobante de enganche:', err));
 
     // WhatsApp de bienvenida al cliente (fire-and-forget)
     sendBienvenidaClienteWA({
