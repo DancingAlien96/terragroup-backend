@@ -2,10 +2,23 @@ import { Request, Response } from 'express';
 import * as EmpresasService from './empresas.service.js';
 
 export async function register(req: Request, res: Response) {
-  const { empresa_nombre, empresa_email, empresa_telefono, plan_id, nombre_admin, email_admin, username_admin, password_admin } = req.body;
+  const {
+    empresa_nombre, empresa_email, empresa_telefono, plan_id,
+    nombre_admin, email_admin, username_admin, password_admin,
+    acepto_terminos,
+  } = req.body;
 
   if (!empresa_nombre || !nombre_admin || !email_admin || !username_admin || !password_admin) {
     return res.status(400).json({ success: false, message: 'Faltan campos requeridos' });
+  }
+
+  // Evidencia legal: el cliente debe haber aceptado expresamente. Sin esto el
+  // registro no procede, sin importar lo que diga el frontend.
+  if (acepto_terminos !== true) {
+    return res.status(400).json({
+      success: false,
+      message: 'Debes aceptar los Términos y la Política de Privacidad para continuar',
+    });
   }
 
   try {
@@ -13,6 +26,7 @@ export async function register(req: Request, res: Response) {
       empresa_nombre, empresa_email, empresa_telefono,
       plan_id: plan_id ? Number(plan_id) : undefined,
       nombre_admin, email_admin, username_admin, password_admin,
+      acepto_terminos: true,
     });
     return res.status(201).json({ success: true, data: result });
   } catch (err: any) {

@@ -13,6 +13,9 @@ export interface RegisterPayload {
   email_admin: string;
   username_admin: string;
   password_admin: string;
+  // Evidencia legal de aceptación de Términos, Privacidad y Aviso de IA.
+  // Debe venir true; el controlador rechaza si no.
+  acepto_terminos: boolean;
 }
 
 const DEFAULT_PLAN_ID = Number(process.env.DEFAULT_PLAN_ID ?? '1');
@@ -49,12 +52,13 @@ export async function registerEmpresa(data: RegisterPayload) {
   const { empresaId, userId, empresaNombre } = await prisma.$transaction(async (tx) => {
     const empresa = await tx.empresa.create({
       data: {
-        nombre:      data.empresa_nombre,
-        email:       data.empresa_email ?? null,
-        telefono:    data.empresa_telefono ?? null,
-        planId:      data.plan_id ?? DEFAULT_PLAN_ID,
-        activo:      false,
-        fechaInicio: null,
+        nombre:           data.empresa_nombre,
+        email:            data.empresa_email ?? null,
+        telefono:         data.empresa_telefono ?? null,
+        planId:           data.plan_id ?? DEFAULT_PLAN_ID,
+        activo:           false,
+        fechaInicio:      null,
+        aceptoTerminosEn: new Date(),
       },
     });
 

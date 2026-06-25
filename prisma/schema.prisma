@@ -80,6 +80,9 @@ model Empresa {
   // ID del intent/checkout de Recurrente que activó la suscripción.
   // Usado para idempotencia del webhook (un mismo intent no activa dos veces).
   pagoSuscripcionId   String?   @map("pago_suscripcion_id") @db.VarChar(100)
+  // Momento exacto en que el admin aceptó los términos y la política de
+  // privacidad durante el registro. Evidencia legal de consentimiento.
+  aceptoTerminosEn    DateTime? @map("acepto_terminos_en")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
