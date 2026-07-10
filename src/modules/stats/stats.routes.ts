@@ -197,18 +197,24 @@ router.get('/reportes', async (req, res) => {
   const empresaId = req.user!.empresaId;
 
   try {
-    const seisMesesAtras = new Date();
-    seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 6);
+    // Ventana temporal: últimos 6 meses inclusive del mes actual.
+    // Ambos bordes acotados para NO incluir cuotas futuras (contratos duran
+    // años; sin cap superior el reporte mostraba pendientes hasta 2028+).
+    const finMesActual = new Date();
+    finMesActual.setMonth(finMesActual.getMonth() + 1, 1);   // 1º del próximo mes
+    finMesActual.setHours(0, 0, 0, 0);
+    const inicioVentana = new Date(finMesActual);
+    inicioVentana.setMonth(inicioVentana.getMonth() - 6);    // 6 meses antes
 
     // Cobrado: agrupar por fechaPago (cuando se cobró)
     // Pendientes/Vencidos: agrupar por fechaVencimiento (cuando se esperaba el pago)
-    // Si filtramos todo por fechaPago, los pendientes (con fechaPago null) se pierden.
+    // Ambos se filtran a la misma ventana [hace 6 meses, fin del mes actual).
     const pagos = await prisma.pago.findMany({
       where: {
         empresaId,
         OR: [
-          { fechaPago:        { gte: seisMesesAtras } },
-          { fechaVencimiento: { gte: seisMesesAtras } },
+          { fechaPago:        { gte: inicioVentana, lt: finMesActual } },
+          { fechaVencimiento: { gte: inicioVentana, lt: finMesActual } },
         ],
       },
       select: { fechaPago: true, fechaVencimiento: true, monto: true, estado: true },
@@ -218,6 +224,10 @@ router.get('/reportes', async (req, res) => {
     for (const p of pagos) {
       const refFecha = p.estado === 'pagado' ? p.fechaPago : p.fechaVencimiento;
       if (!refFecha) continue;
+      // Defensa en profundidad: aunque el WHERE ya filtra, ignorar cualquier
+      // fecha fuera de la ventana por si algún pago tiene fechaPago dentro
+      // pero fechaVencimiento fuera (o viceversa).
+      if (refFecha < inicioVentana || refFecha >= finMesActual) continue;
       const key = refFecha.toISOString().slice(0, 7);
       const b = byMes.get(key) ?? { cobrado: 0, pendiente: 0, vencido: 0 };
       const m = Number(p.monto);
@@ -226,10 +236,21 @@ router.get('/reportes', async (req, res) => {
       else if (p.estado === 'vencido') b.vencido += m;
       byMes.set(key, b);
     }
-    const monthly = [...byMes.entries()].sort().map(([mesKey, b]) => {
-      const d = new Date(mesKey + '-01');
-      return { mes: d.toLocaleDateString('es-GT', { month: 'short', year: 'numeric' }), mes_key: mesKey, ...b };
-    });
+    // Genera los 6 meses garantizados (rellena con 0 los que no tienen datos)
+    // para que el gráfico siempre muestre la ventana completa aunque no haya
+    // pagos en algún mes intermedio.
+    const monthly: Array<{ mes: string; mes_key: string; cobrado: number; pendiente: number; vencido: number }> = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(finMesActual);
+      d.setMonth(d.getMonth() - 1 - i);
+      const mesKey = d.toISOString().slice(0, 7);
+      const b = byMes.get(mesKey) ?? { cobrado: 0, pendiente: 0, vencido: 0 };
+      monthly.push({
+        mes:     d.toLocaleDateString('es-GT', { month: 'short', year: 'numeric' }),
+        mes_key: mesKey,
+        ...b,
+      });
+    }
 
     // Saldos por propietario (top 20)
     const ventas = await prisma.venta.findMany({
