@@ -9,6 +9,7 @@ import uploadsRoutes from './modules/uploads/uploads.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import usuariosRoutes from './modules/usuarios/usuarios.routes.js';
 import lotesRoutes from './modules/lotes/lotes.routes.js';
+import proyectosRoutes from './modules/proyectos/proyectos.routes.js';
 import propietariosRoutes from './modules/propietarios/propietarios.routes.js';
 import pagosRoutes from './modules/pagos/pagos.routes.js';
 import vendedoresRoutes from './modules/vendedores/vendedores.routes.js';
@@ -70,6 +71,7 @@ app.use('/api', (_req, res, next) => {
 app.use('/api/auth',           authRoutes);
 app.use('/api/usuarios',       usuariosRoutes);
 app.use('/api/lotes',          lotesRoutes);
+app.use('/api/proyectos',      proyectosRoutes);
 app.use('/api/propietarios',   propietariosRoutes);
 app.use('/api/pagos',          pagosRoutes);
 app.use('/api/vendedores',     vendedoresRoutes);

@@ -22,7 +22,13 @@ export async function create(req: Request, res: Response) {
     const lote = await svc.createLote(req.user!.empresaId, req.body);
     return res.status(201).json({ success: true, data: lote });
   } catch (e: any) {
-    if (e?.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'Clave de lote ya existe' });
+    if (e?.code === 'ER_DUP_ENTRY' || e?.code === 'P2002') {
+      return res.status(409).json({ success: false, message: 'Clave de lote ya existe' });
+    }
+    if (e instanceof Error && e.message.includes('proyecto')) {
+      return res.status(400).json({ success: false, message: e.message });
+    }
+    console.error('[lotes create]', e);
     return res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 }

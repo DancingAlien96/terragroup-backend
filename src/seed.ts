@@ -112,9 +112,9 @@ async function seedCarteraEmpresa(empresaId: number, ventas: SeedVenta[]) {
 /* ── Datos ─────────────────────────────────────────────────── */
 
 const planes = [
-  { nombre: 'basico',      precio: 45,  maxLotes: 150,  maxUsuarios: 1 },
-  { nombre: 'profesional', precio: 90,  maxLotes: 300,  maxUsuarios: 3 },
-  { nombre: 'empresarial', precio: 150, maxLotes: 1000, maxUsuarios: 5 },
+  { nombre: 'basico',      precio: 250, maxLotes: 150,    maxUsuarios: 1,  maxProyectos: 1   },
+  { nombre: 'business',    precio: 350, maxLotes: 300,    maxUsuarios: 3,  maxProyectos: 2   },
+  { nombre: 'empresarial', precio: 150, maxLotes: 999999, maxUsuarios: 99, maxProyectos: 999 },  // interno / legacy
 ];
 
 const empresas = [
@@ -127,7 +127,7 @@ const empresas = [
   {
     nombre: 'Terrenos Pacífico S.R.L.',
     rfc: 'TPA150305BB2',
-    planNombre: 'profesional',
+    planNombre: 'business',
     usuario: { nombre: 'María Rivas', email: 'maria@terrapacifico.com', username: 'maria_pacifico' },
   },
   {
@@ -190,7 +190,12 @@ async function main() {
     await prisma.plan.upsert({
       where: { nombre: p.nombre },
       create: p,
-      update: { precio: p.precio, maxLotes: p.maxLotes, maxUsuarios: p.maxUsuarios },
+      update: {
+        precio:       p.precio,
+        maxLotes:     p.maxLotes,
+        maxUsuarios:  p.maxUsuarios,
+        maxProyectos: p.maxProyectos,
+      },
     });
   }
   console.log(`✅ ${planes.length} planes`);

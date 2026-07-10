@@ -68,15 +68,18 @@ enum EstadoSuscripcion {
 // ── Modelos ───────────────────────────────────────────────────
 
 model Plan {
-  id           Int       @id @default(autoincrement())
-  nombre       String    @unique @db.VarChar(50)
-  precio       Decimal   @db.Decimal(10, 2)
-  maxLotes     Int       @map("max_lotes")
-  maxUsuarios  Int       @map("max_usuarios")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id            Int       @id @default(autoincrement())
+  nombre        String    @unique @db.VarChar(50)
+  precio        Decimal   @db.Decimal(10, 2)
+  maxLotes      Int       @map("max_lotes")
+  maxUsuarios   Int       @map("max_usuarios")
+  // Máximo de proyectos (terrenos grandes divididos en lotes) que la empresa
+  // puede tener con este plan. Si necesita más, compra extras por $50/mes.
+  maxProyectos  Int       @default(1) @map("max_proyectos")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  empresas     Empresa[]
+  empresas      Empresa[]
 
   @@map("planes")
 }
@@ -102,6 +105,8 @@ model Empresa {
   // Trial: inicio (cuando llegó setup_intent.succeeded) y fin (+14 días).
   trialInicio         DateTime?          @map("trial_inicio")
   trialFin            DateTime?          @map("trial_fin")
+  // Proyectos extra sobre el máximo del plan. Cada uno cuesta $50/mes en Recurrente.
+  proyectosExtra      Int                @default(0) @map("proyectos_extra")
   // Momento exacto en que el admin aceptó los términos y la política de
   // privacidad durante el registro. Evidencia legal de consentimiento.
   aceptoTerminosEn    DateTime?          @map("acepto_terminos_en")
@@ -110,6 +115,7 @@ model Empresa {
 
   plan            Plan            @relation(fields: [planId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   usuarios        Usuario[]
+  proyectos       Proyecto[]
   lotes           Lote[]
   propietarios    Propietario[]
   vendedores      Vendedor[]
@@ -146,9 +152,30 @@ model Usuario {
   @@map("usuarios")
 }
 
+// Un terreno grande dividido en lotes (lotificación). El plan de la empresa
+// limita cuántos proyectos puede tener; extras se compran a $50/mes.
+model Proyecto {
+  id          Int      @id @default(autoincrement())
+  empresaId   Int      @map("empresa_id")
+  nombre      String   @db.VarChar(150)
+  descripcion String?  @db.Text
+  ubicacion   String?  @db.VarChar(255)
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  empresa  Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  lotes    Lote[]
+
+  @@unique([empresaId, nombre], name: "uq_proyectos_empresa_nombre")
+  @@index([empresaId])
+  @@map("proyectos")
+}
+
 model Lote {
   id           Int        @id @default(autoincrement())
   empresaId    Int        @map("empresa_id")
+  proyectoId   Int        @map("proyecto_id")
   clave        String     @db.VarChar(50)
   manzana      String?    @db.VarChar(20)
   numero       String?    @db.VarChar(20)
@@ -158,11 +185,13 @@ model Lote {
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
-  empresa  Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-  ventas   Venta[]
+  empresa   Empresa  @relation(fields: [empresaId],  references: [id], onUpdate: Cascade, onDelete: Cascade)
+  proyecto  Proyecto @relation(fields: [proyectoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  ventas    Venta[]
 
   @@unique([empresaId, clave], name: "uq_lotes_empresa_clave")
   @@index([empresaId])
+  @@index([proyectoId])
   @@map("lotes")
 }
 
