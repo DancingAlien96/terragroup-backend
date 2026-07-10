@@ -1,14 +1,14 @@
 import bcrypt from 'bcryptjs';
 import prisma from '../../config/prisma.js';
 import { Rol } from '../../generated/prisma/enums.js';
-import { createCheckout } from '../../config/recurrente.js';
+import { createCheckout, type PlanSlug } from '../../config/recurrente.js';
 
 export interface RegisterPayload {
   empresa_nombre: string;
   empresa_email?: string;
   empresa_telefono?: string;
-  // plan_id es opcional; si no viene se usa DEFAULT_PLAN_ID (modelo de pago único).
-  plan_id?: number;
+  // 'basico' o 'business'. Otros valores caen a 'basico'.
+  plan?: string;
   nombre_admin: string;
   email_admin: string;
   username_admin: string;
@@ -18,7 +18,17 @@ export interface RegisterPayload {
   acepto_terminos: boolean;
 }
 
-const DEFAULT_PLAN_ID = Number(process.env.DEFAULT_PLAN_ID ?? '1');
+/** Resuelve el slug de plan al PlanSlug conocido. Defaults to 'basico'. */
+function resolvePlan(input: string | undefined): PlanSlug {
+  return input === 'business' ? 'business' : 'basico';
+}
+
+/** Busca el plan.id en BD por su slug. Los slugs deben existir en la tabla planes. */
+async function planIdBySlug(slug: PlanSlug): Promise<number> {
+  const p = await prisma.plan.findUnique({ where: { nombre: slug }, select: { id: true } });
+  if (!p) throw new Error(`Plan '${slug}' no existe en la BD — corre el seed`);
+  return p.id;
+}
 
 /**
  * Registro público: crea empresa (inactiva) + usuario admin, luego abre un
@@ -61,7 +71,9 @@ export async function registerEmpresa(data: RegisterPayload) {
     await prisma.empresa.delete({ where: { id: u.empresaId } });
   }
 
-  const hashed = await bcrypt.hash(data.password_admin, 10);
+  const hashed  = await bcrypt.hash(data.password_admin, 10);
+  const planSlug = resolvePlan(data.plan);
+  const planId   = await planIdBySlug(planSlug);
 
   const { empresaId, userId, empresaNombre } = await prisma.$transaction(async (tx) => {
     const empresa = await tx.empresa.create({
@@ -69,7 +81,7 @@ export async function registerEmpresa(data: RegisterPayload) {
         nombre:           data.empresa_nombre,
         email:            data.empresa_email ?? null,
         telefono:         data.empresa_telefono ?? null,
-        planId:           data.plan_id ?? DEFAULT_PLAN_ID,
+        planId,
         activo:           false,
         fechaInicio:      null,
         aceptoTerminosEn: new Date(),
@@ -95,7 +107,9 @@ export async function registerEmpresa(data: RegisterPayload) {
   // abrazar la llamada HTTP — sería antipatrón mantener un tx abierto durante
   // I/O externo.
   try {
-    const { checkout_url } = await createCheckout({ empresaId, usuarioId: userId, empresaNombre });
+    const { checkout_url } = await createCheckout({
+      empresaId, usuarioId: userId, empresaNombre, plan: planSlug,
+    });
     return { empresaId, userId, checkoutUrl: checkout_url };
   } catch (err) {
     await prisma.usuario.delete({ where: { id: userId } }).catch(() => {});

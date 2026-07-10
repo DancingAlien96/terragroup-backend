@@ -22,7 +22,7 @@
 import { Request, Response } from 'express';
 import { Webhook } from 'svix';
 import prisma from '../../config/prisma.js';
-import { cancelSubscription, RECURRENTE_TRIAL_SEMANAS } from '../../config/recurrente.js';
+import { RECURRENTE_TRIAL_SEMANAS } from '../../config/recurrente.js';
 import { EstadoSuscripcion } from '../../generated/prisma/enums.js';
 
 const WEBHOOK_SECRET = process.env.RECURRENTE_WEBHOOK_SECRET ?? '';
@@ -181,6 +181,10 @@ async function handleIntentSucceeded(
     return;
   }
 
+  // Modelo mensual: cada intent.succeeded es una renovación válida.
+  // NO cancelamos la suscripción — cada mes Recurrente cobra automático.
+  // Guardamos el último intent en pagoSuscripcionId para idempotencia y
+  // trazabilidad del último cobro exitoso.
   await prisma.empresa.update({
     where: { id: empresaId },
     data: {
@@ -190,18 +194,7 @@ async function handleIntentSucceeded(
     },
   });
 
-  // Cancelamos la subscription para que no cobre al próximo ciclo (acceso
-  // perpetuo de un solo pago). Fallar acá no es fatal — un error nos dejaría
-  // con la subscription viva pero el cliente ya pagó.
-  if (empresa.suscripcionId) {
-    try {
-      await cancelSubscription(empresa.suscripcionId);
-    } catch (err) {
-      console.error(`[webhook-recurrente] No se pudo cancelar suscripción ${empresa.suscripcionId}:`, err);
-    }
-  }
-
-  console.log(`[webhook-recurrente] Empresa "${empresa.nombre}" (id=${empresaId}) pagada con intent ${payload.id}`);
+  console.log(`[webhook-recurrente] Empresa "${empresa.nombre}" (id=${empresaId}) cobro mensual OK — intent ${payload.id}`);
   res.json({ ok: true, paid: true });
 }
 

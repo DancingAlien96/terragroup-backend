@@ -3,7 +3,7 @@ import * as EmpresasService from './empresas.service.js';
 
 export async function register(req: Request, res: Response) {
   const {
-    empresa_nombre, empresa_email, empresa_telefono, plan_id,
+    empresa_nombre, empresa_email, empresa_telefono, plan,
     nombre_admin, email_admin, username_admin, password_admin,
     acepto_terminos,
   } = req.body;
@@ -24,7 +24,7 @@ export async function register(req: Request, res: Response) {
   try {
     const result = await EmpresasService.registerEmpresa({
       empresa_nombre, empresa_email, empresa_telefono,
-      plan_id: plan_id ? Number(plan_id) : undefined,
+      plan: typeof plan === 'string' ? plan : undefined,
       nombre_admin, email_admin, username_admin, password_admin,
       acepto_terminos: true,
     });
