@@ -11,6 +11,8 @@ function shape(v: any) {
     id:                v.id,
     empresa_id:        v.empresaId,
     propietario_id:    v.propietarioId,
+    proyecto_id:       v.proyectoId,
+    proyecto:          v.proyecto ?? null,
     lote_id:           v.loteId,
     vendedor_id:       v.vendedorId,
     // Compat: datos del propietario aplanados como si fueran del "cliente"
@@ -74,6 +76,7 @@ export async function create(req: Request, res: Response) {
     propietario:      b.propietario ?? (b.nombre_comprador ? {
       nombre: b.nombre_comprador, nit: b.nit, email: b.email, telefono: b.telefono,
     } : undefined),
+    proyectoId:       b.proyectoId ?? b.proyecto_id,
     loteId:           b.loteId ?? b.lote_id ?? null,
     descripcionLote:  b.descripcionLote ?? b.descripcion_lote ?? null,
     vendedorId:       b.vendedorId ?? b.vendedor_id ?? null,

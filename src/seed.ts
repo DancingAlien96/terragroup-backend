@@ -45,6 +45,13 @@ interface SeedVenta {
 }
 
 async function seedCarteraEmpresa(empresaId: number, ventas: SeedVenta[]) {
+  // 0. Proyecto por defecto (crear si no existe) para vincular las ventas del seed
+  const proyecto =
+    (await prisma.proyecto.findFirst({ where: { empresaId, nombre: 'Principal' } })) ??
+    (await prisma.proyecto.create({
+      data: { empresaId, nombre: 'Principal', descripcion: 'Proyecto por defecto (seed)' },
+    }));
+
   for (const v of ventas) {
     // 1. Propietario — dedupe por nombre+empresa (no hay unique constraint)
     const propietario =
@@ -71,6 +78,7 @@ async function seedCarteraEmpresa(empresaId: number, ventas: SeedVenta[]) {
       data: {
         empresaId,
         propietarioId: propietario.id,
+        proyectoId:    proyecto.id,
         descripcionLote: v.descripcionLote,
         precioTotal: v.precioNeto,
         enganche: v.enganche,

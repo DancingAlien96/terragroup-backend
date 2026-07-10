@@ -54,6 +54,10 @@ export interface CreateVentaInput {
   // Opción B: crear propietario nuevo
   propietario?: { nombre: string; nit?: string | null; email?: string | null; telefono?: string | null; direccion?: string | null };
 
+  // Proyecto al que pertenece la venta. Opcional en el input; si no viene,
+  // el service lo resuelve al primer proyecto activo de la empresa
+  // (mantiene compatibilidad con clients viejos que no lo mandan).
+  proyectoId?: number;
   loteId?: number | null;
   descripcionLote?: string | null;
   vendedorId?: number | null;
@@ -84,6 +88,7 @@ function addMonths(date: Date, months: number): Date {
 
 const includeDetalle = {
   propietario: true,
+  proyecto:    { select: { id: true, nombre: true } },
   lote:        true,
   vendedor:    true,
   pagos:       true,
@@ -124,6 +129,25 @@ export async function createVenta(empresaId: number, input: CreateVentaInput) {
     nonEmptyString('Nombre del propietario', input.propietario.nombre, 100);
   }
 
+  // Resolver proyecto: si viene explícito, validar pertenencia; si no,
+  // usar el primer proyecto activo de la empresa (retro-compat con
+  // clients viejos que no envían proyecto_id).
+  let proyectoId = input.proyectoId;
+  if (proyectoId) {
+    const p = await prisma.proyecto.findFirst({
+      where: { id: proyectoId, empresaId }, select: { id: true },
+    });
+    if (!p) throw new ValidationError('El proyecto no existe o no pertenece a esta empresa');
+  } else {
+    const p = await prisma.proyecto.findFirst({
+      where:   { empresaId, activo: true },
+      orderBy: { id: 'asc' },
+      select:  { id: true },
+    });
+    if (!p) throw new ValidationError('La empresa no tiene proyectos configurados');
+    proyectoId = p.id;
+  }
+
   return prisma.$transaction(async (tx) => {
     // 1. Resolver propietario (existente o crear nuevo)
     let propietarioId = input.propietarioId;
@@ -149,6 +173,7 @@ export async function createVenta(empresaId: number, input: CreateVentaInput) {
       data: {
         empresaId,
         propietarioId,
+        proyectoId,
         loteId:           input.loteId ?? null,
         descripcionLote:  input.descripcionLote ?? null,
         vendedorId:       input.vendedorId ?? null,

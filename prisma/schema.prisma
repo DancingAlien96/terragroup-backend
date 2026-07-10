@@ -166,6 +166,7 @@ model Proyecto {
 
   empresa  Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   lotes    Lote[]
+  ventas   Venta[]
 
   @@unique([empresaId, nombre], name: "uq_proyectos_empresa_nombre")
   @@index([empresaId])
@@ -259,6 +260,10 @@ model Venta {
   id                 Int               @id @default(autoincrement())
   empresaId          Int               @map("empresa_id")
   propietarioId      Int               @map("propietario_id")
+  // Proyecto al que pertenece esta venta. Obligatorio — cada venta vive
+  // dentro de un proyecto (lotificación). Backfill: al aplicar la migración
+  // se asigna al proyecto "Principal" de la empresa.
+  proyectoId         Int               @map("proyecto_id")
   loteId             Int?              @map("lote_id")
   descripcionLote    String?           @map("descripcion_lote") @db.VarChar(255)
   vendedorId         Int?              @map("vendedor_id")
@@ -287,6 +292,7 @@ model Venta {
 
   empresa      Empresa      @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   propietario  Propietario  @relation(fields: [propietarioId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  proyecto     Proyecto     @relation(fields: [proyectoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   lote         Lote?        @relation(fields: [loteId], references: [id], onUpdate: Cascade, onDelete: SetNull)
   vendedor     Vendedor?    @relation(fields: [vendedorId], references: [id], onUpdate: Cascade, onDelete: SetNull)
   pagos        Pago[]
@@ -295,6 +301,7 @@ model Venta {
 
   @@index([empresaId])
   @@index([propietarioId])
+  @@index([proyectoId])
   @@index([loteId])
   @@index([vendedorId])
   @@map("ventas")
