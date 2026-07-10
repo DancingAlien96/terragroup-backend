@@ -72,13 +72,42 @@ export async function deleteVendedor(id: number, empresaId: number): Promise<boo
 
 /* ── Comisiones ───────────────────────────────────────────── */
 
+/**
+ * Mapea una comisión de Prisma (camelCase interno) al shape snake_case
+ * que consume el frontend. Sin esto, el frontend lee undefined para
+ * descripcion_lote/valor_lote/monto_comision/fecha_venta → Q NaN visible.
+ */
+function shapeComision(c: {
+  id: number; empresaId: number; vendedorId: number;
+  descripcionLote: string;
+  valorLote: unknown;
+  porcentaje: unknown;
+  montoComision: unknown;
+  fechaVenta: Date;
+  createdAt: Date;
+  vendedor?: { nombre: string };
+}) {
+  return {
+    id:               c.id,
+    empresa_id:       c.empresaId,
+    vendedor_id:      c.vendedorId,
+    vendedor_nombre:  c.vendedor?.nombre ?? '',
+    descripcion_lote: c.descripcionLote,
+    valor_lote:       Number(c.valorLote),
+    porcentaje:       Number(c.porcentaje),
+    monto_comision:   Number(c.montoComision),
+    fecha_venta:      c.fechaVenta,
+    created_at:       c.createdAt,
+  };
+}
+
 export async function listComisiones(vendedorId: number, empresaId: number) {
   const rows = await prisma.comision.findMany({
     where:   { vendedorId, empresaId },
     include: { vendedor: { select: { nombre: true } } },
     orderBy: { fechaVenta: 'desc' },
   });
-  return rows.map((c) => ({ ...c, vendedor_nombre: c.vendedor.nombre }));
+  return rows.map(shapeComision);
 }
 
 export async function createComision(
@@ -99,7 +128,7 @@ export async function createComision(
     },
     include: { vendedor: { select: { nombre: true } } },
   });
-  return { ...created, vendedor_nombre: created.vendedor.nombre };
+  return shapeComision(created);
 }
 
 export async function updateComision(
@@ -125,7 +154,7 @@ export async function updateComision(
     },
     include: { vendedor: { select: { nombre: true } } },
   });
-  return { ...updated, vendedor_nombre: updated.vendedor.nombre };
+  return shapeComision(updated);
 }
 
 export async function deleteComision(id: number, empresaId: number): Promise<boolean> {
