@@ -77,6 +77,49 @@ export async function cancelarMiSuscripcion(req: Request, res: Response) {
   }
 }
 
+/** Súper-admin: lista los usuarios de cualquier empresa. */
+export async function listUsuariosEmpresa(req: Request, res: Response) {
+  try {
+    const empresaId = Number(req.params.id);
+    if (!Number.isFinite(empresaId)) return res.status(400).json({ success: false, message: 'id inválido' });
+    const usuarios = await EmpresasService.listUsuariosDeEmpresa(empresaId);
+    return res.json({ success: true, data: usuarios });
+  } catch (err) {
+    console.error('[super-admin listUsuarios]', err);
+    return res.status(500).json({ success: false, message: 'Error al obtener usuarios' });
+  }
+}
+
+/**
+ * Súper-admin: cambia username y/o contraseña de un usuario de una empresa.
+ * Uso típico: soporte cuando un cliente olvida sus credenciales.
+ */
+export async function updateCredencialesUsuario(req: Request, res: Response) {
+  try {
+    const empresaId = Number(req.params.id);
+    const usuarioId = Number(req.params.usuarioId);
+    if (!Number.isFinite(empresaId) || !Number.isFinite(usuarioId)) {
+      return res.status(400).json({ success: false, message: 'ids inválidos' });
+    }
+    const { username, password } = req.body ?? {};
+    if (username === undefined && password === undefined) {
+      return res.status(400).json({ success: false, message: 'Envía username o password' });
+    }
+    const result = await EmpresasService.updateCredencialesUsuario(empresaId, usuarioId, { username, password });
+    if (!result) return res.status(404).json({ success: false, message: 'Usuario no encontrado en esta empresa' });
+    return res.json({ success: true, data: result });
+  } catch (err: any) {
+    if (err?.code === 'P2002' || err?.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ success: false, message: 'El username ya está en uso por otro usuario' });
+    }
+    if (err instanceof Error && (err.message.includes('username') || err.message.includes('contraseña'))) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    console.error('[super-admin updateCredenciales]', err);
+    return res.status(500).json({ success: false, message: 'Error al actualizar credenciales' });
+  }
+}
+
 /**
  * Endpoint público (sin auth) usado por la página /register/exito para
  * hacer polling hasta que el webhook activa la empresa. Solo devuelve `activo`.

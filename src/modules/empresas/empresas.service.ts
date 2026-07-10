@@ -135,6 +135,58 @@ async function empresaWithStats(empresaId: number) {
   };
 }
 
+/* ── Súper-admin: gestión de usuarios de cualquier empresa ─────────── */
+
+/** Lista los usuarios de una empresa específica (uso exclusivo super-admin). */
+export async function listUsuariosDeEmpresa(empresaId: number) {
+  return prisma.usuario.findMany({
+    where:   { empresaId },
+    select:  {
+      id: true, nombre: true, email: true, username: true,
+      rol: true, activo: true, createdAt: true,
+    },
+    orderBy: [{ activo: 'desc' }, { nombre: 'asc' }],
+  });
+}
+
+/**
+ * Cambia username y/o contraseña de un usuario específico de una empresa.
+ * Uso exclusivo super-admin (soporte cuando un cliente olvida credenciales).
+ * - Valida que el usuario pertenezca a la empresa indicada (defensa en profundidad).
+ * - Contraseña se hashea con bcrypt.
+ * - Si username colisiona con otro usuario, lanza P2002 (el controller
+ *   lo traduce a 409 amigable).
+ */
+export async function updateCredencialesUsuario(
+  empresaId: number,
+  usuarioId: number,
+  data: { username?: string; password?: string },
+) {
+  const usuario = await prisma.usuario.findFirst({
+    where:  { id: usuarioId, empresaId },
+    select: { id: true },
+  });
+  if (!usuario) return null;
+
+  const payload: Record<string, unknown> = {};
+  if (data.username !== undefined) {
+    const trimmed = data.username.trim();
+    if (trimmed.length < 3) throw new Error('El username debe tener al menos 3 caracteres');
+    payload.username = trimmed;
+  }
+  if (data.password !== undefined) {
+    if (data.password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
+    payload.password = await bcrypt.hash(data.password, 10);
+  }
+  if (Object.keys(payload).length === 0) return usuario;
+
+  await prisma.usuario.update({ where: { id: usuarioId }, data: payload });
+  return prisma.usuario.findUnique({
+    where:  { id: usuarioId },
+    select: { id: true, nombre: true, email: true, username: true, rol: true, activo: true },
+  });
+}
+
 /** Estado mínimo, usado por el polling público de /register/exito. */
 export async function getEmpresaEstado(id: number) {
   const e = await prisma.empresa.findUnique({
