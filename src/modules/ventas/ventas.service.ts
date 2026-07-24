@@ -112,6 +112,46 @@ export function getVenta(id: number, empresaId: number) {
   });
 }
 
+/**
+ * Lista ventas sin lote vinculado dentro de un proyecto. Usado por el editor
+ * de croquis para auto-sugerir vinculación cuando el dueño crea un nuevo lote
+ * que coincide con una `descripcion_lote` histórica. El frontend hace el
+ * matching por substring — más flexible que forzar heurísticas server-side.
+ */
+export function listVentasSinLote(empresaId: number, proyectoId: number) {
+  return prisma.venta.findMany({
+    where: {
+      empresaId, proyectoId,
+      loteId: null,
+      estado: { not: 'cancelado' },
+    },
+    include: includeDetalle,
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+/**
+ * Vincula una venta huérfana a un lote. Ambos deben pertenecer a la misma
+ * empresa Y al mismo proyecto (evita ligar una venta a un lote de otro
+ * proyecto por error o IDOR). Devuelve null si algo no cuadra.
+ */
+export async function vincularVentaALote(
+  ventaId: number,
+  loteId: number,
+  empresaId: number,
+) {
+  const [venta, lote] = await Promise.all([
+    prisma.venta.findFirst({ where: { id: ventaId, empresaId } }),
+    prisma.lote.findFirst({ where: { id: loteId, empresaId } }),
+  ]);
+  if (!venta || !lote) return null;
+  if (venta.proyectoId !== lote.proyectoId) {
+    throw new Error('El lote y la venta pertenecen a proyectos distintos');
+  }
+  await prisma.venta.update({ where: { id: ventaId }, data: { loteId } });
+  return getVenta(ventaId, empresaId);
+}
+
 /* ── Creación ─────────────────────────────────────────────── */
 
 export async function createVenta(empresaId: number, input: CreateVentaInput) {

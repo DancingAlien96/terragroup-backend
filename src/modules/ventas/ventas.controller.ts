@@ -68,6 +68,37 @@ export async function get(req: Request, res: Response) {
   }
 }
 
+/** Ventas del proyecto sin lote vinculado — usado por el editor de croquis. */
+export async function listSinLote(req: Request, res: Response) {
+  try {
+    const proyectoId = Number(req.query.proyecto_id);
+    if (!Number.isFinite(proyectoId)) return res.status(400).json({ success: false, message: 'proyecto_id requerido' });
+    const items = await svc.listVentasSinLote(req.user!.empresaId, proyectoId);
+    return res.json({ success: true, data: items.map(shape) });
+  } catch (e) {
+    console.error('[ventas listSinLote]', e);
+    return res.status(500).json({ success: false, message: 'Error al obtener ventas sin lote' });
+  }
+}
+
+/** Vincula una venta huérfana a un lote (mismo proyecto). */
+export async function vincularLote(req: Request, res: Response) {
+  try {
+    const ventaId = Number(req.params.id);
+    const loteId  = Number(req.body?.lote_id);
+    if (!Number.isFinite(ventaId) || !Number.isFinite(loteId)) {
+      return res.status(400).json({ success: false, message: 'ventaId y lote_id son requeridos' });
+    }
+    const upd = await svc.vincularVentaALote(ventaId, loteId, req.user!.empresaId);
+    if (!upd) return res.status(404).json({ success: false, message: 'Venta o lote no encontrado' });
+    return res.json({ success: true, data: shape(upd) });
+  } catch (e: any) {
+    if (e instanceof Error) return res.status(400).json({ success: false, message: e.message });
+    console.error('[ventas vincularLote]', e);
+    return res.status(500).json({ success: false, message: 'Error al vincular venta a lote' });
+  }
+}
+
 export async function create(req: Request, res: Response) {
   // Acepta tanto el formato nuevo (propietarioId/propietario) como el formato legacy plano (nombre_comprador, fecha_deposito, precio_neto)
   const b = req.body;
