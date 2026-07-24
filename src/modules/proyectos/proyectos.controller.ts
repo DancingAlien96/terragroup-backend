@@ -79,7 +79,16 @@ export async function remove(req: Request, res: Response) {
       return res.status(400).json({ success: false, message: result.reason });
     }
     return res.json({ success: true });
-  } catch (err) {
+  } catch (err: any) {
+    // P2003 = FK constraint (algo lo referencia). Devolvemos un 409 amistoso
+    // en vez del 500 genérico; el service ya bloquea lotes/ventas, esto atrapa
+    // cualquier otra relación futura (croquis, etc.) sin romper la UX.
+    if (err?.code === 'P2003') {
+      return res.status(409).json({
+        success: false,
+        message: 'El proyecto tiene datos asociados que impiden eliminarlo. Desactívalo en vez de borrarlo.',
+      });
+    }
     console.error('[proyectos delete]', err);
     return res.status(500).json({ success: false, message: 'Error al eliminar proyecto' });
   }

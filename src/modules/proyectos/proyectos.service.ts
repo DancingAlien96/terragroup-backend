@@ -105,21 +105,30 @@ export async function updateProyecto(
 }
 
 /**
- * Elimina el proyecto. Bloqueado si tiene lotes asociados (onDelete Restrict
- * en el schema lo previene también a nivel BD). Devuelve false si no existe
- * o si tiene lotes.
+ * Elimina el proyecto. Bloqueado si tiene lotes o ventas asociados — ambas
+ * relaciones son onDelete Restrict a nivel BD. La UI debe indicar al dueño
+ * que primero migre o desactive esos datos, o simplemente desactivar el
+ * proyecto (soft delete).
  */
 export async function deleteProyecto(id: number, empresaId: number): Promise<{
   ok: boolean; reason?: string;
 }> {
   const p = await prisma.proyecto.findFirst({
     where:   { id, empresaId },
-    include: { _count: { select: { lotes: true } } },
+    include: { _count: { select: { lotes: true, ventas: true } } },
   });
   if (!p) return { ok: false, reason: 'not_found' };
-  if (p._count.lotes > 0) {
-    return { ok: false, reason: `Tiene ${p._count.lotes} lote(s) asociados. Elimina los lotes o desactívalo.` };
+
+  const partes: string[] = [];
+  if (p._count.lotes  > 0) partes.push(`${p._count.lotes} lote(s)`);
+  if (p._count.ventas > 0) partes.push(`${p._count.ventas} venta(s)`);
+  if (partes.length > 0) {
+    return {
+      ok: false,
+      reason: `Tiene ${partes.join(' y ')} asociados. Elimínalos o desactiva el proyecto en vez de borrarlo.`,
+    };
   }
+
   await prisma.proyecto.delete({ where: { id } });
   return { ok: true };
 }
