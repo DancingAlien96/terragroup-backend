@@ -116,6 +116,7 @@ model Empresa {
   plan            Plan            @relation(fields: [planId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   usuarios        Usuario[]
   proyectos       Proyecto[]
+  croquis         Croquis[]
   lotes           Lote[]
   propietarios    Propietario[]
   vendedores      Vendedor[]
@@ -164,27 +165,65 @@ model Proyecto {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  empresa  Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   lotes    Lote[]
   ventas   Venta[]
+  croquis  Croquis?
 
   @@unique([empresaId, nombre], name: "uq_proyectos_empresa_nombre")
   @@index([empresaId])
   @@map("proyectos")
 }
 
+// Croquis (mapa/plano) de un proyecto. Uno por proyecto. La imagen se sube al
+// disco (misma infra que uploads normales) y los lotes se marcan con pins de
+// coordenadas normalizadas 0-1 (independientes de la resolución de la imagen).
+//
+// Vista pública: si publicoActivo=true, cualquiera con el publicoToken puede
+// ver el mapa (sin datos privados) y contactar al vendedor por WhatsApp/email.
+model Croquis {
+  id                Int      @id @default(autoincrement())
+  empresaId         Int      @map("empresa_id")
+  proyectoId        Int      @unique @map("proyecto_id")
+  imagenUrl         String   @map("imagen_url") @db.VarChar(512)
+  imagenAncho       Int?     @map("imagen_ancho")
+  imagenAlto        Int?     @map("imagen_alto")
+  publicoActivo     Boolean  @default(false) @map("publico_activo")
+  publicoToken      String?  @unique @map("publico_token") @db.VarChar(64)
+  contactoWhatsapp  String?  @map("contacto_whatsapp") @db.VarChar(20)
+  contactoEmail     String?  @map("contacto_email") @db.VarChar(150)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  proyecto Proyecto @relation(fields: [proyectoId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@index([empresaId])
+  @@map("croquis")
+}
+
 model Lote {
-  id           Int        @id @default(autoincrement())
-  empresaId    Int        @map("empresa_id")
-  proyectoId   Int        @map("proyecto_id")
-  clave        String     @db.VarChar(50)
-  manzana      String?    @db.VarChar(20)
-  numero       String?    @db.VarChar(20)
-  superficie   Decimal?   @db.Decimal(10, 2)
-  precioVenta  Decimal?   @map("precio_venta") @db.Decimal(12, 2)
-  estado       EstadoLote @default(disponible)
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  id                    Int        @id @default(autoincrement())
+  empresaId             Int        @map("empresa_id")
+  proyectoId            Int        @map("proyecto_id")
+  clave                 String     @db.VarChar(50)
+  manzana               String?    @db.VarChar(20)
+  numero                String?    @db.VarChar(20)
+  superficie            Decimal?   @db.Decimal(10, 2)
+  precioVenta           Decimal?   @map("precio_venta") @db.Decimal(12, 2)
+  estado                EstadoLote @default(disponible)
+  // Croquis: coordenadas normalizadas 0-1 del pin sobre la imagen del croquis
+  // del proyecto (null si el lote todavía no está marcado en el mapa).
+  puntoX                Float?     @map("punto_x")
+  puntoY                Float?     @map("punto_y")
+  // Vista pública: si true, se muestra el precio_venta en el croquis público
+  // (el dueño elige lote por lote qué exponer).
+  mostrarPrecioPublico  Boolean    @default(true) @map("mostrar_precio_publico")
+  // Notas visibles en el pop-up del croquis público — ej. "Vista al mar",
+  // "Esquinero", "Financiamiento disponible".
+  notasPublicas         String?    @map("notas_publicas") @db.Text
+  createdAt             DateTime   @default(now()) @map("created_at")
+  updatedAt             DateTime   @updatedAt @map("updated_at")
 
   empresa   Empresa  @relation(fields: [empresaId],  references: [id], onUpdate: Cascade, onDelete: Cascade)
   proyecto  Proyecto @relation(fields: [proyectoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
