@@ -166,6 +166,9 @@ model Proyecto {
   nombre      String   @db.VarChar(150)
   descripcion String?  @db.Text
   ubicacion   String?  @db.VarChar(255)
+  // Imagen de portada del proyecto (foto aérea del terreno, render, logo, etc.).
+  // Se muestra como hero en el card del listado y en el editor de croquis.
+  portadaUrl  String?  @map("portada_url") @db.VarChar(512)
   activo      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

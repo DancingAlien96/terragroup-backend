@@ -16,6 +16,7 @@ export async function listProyectos(empresaId: number) {
     nombre:        p.nombre,
     descripcion:   p.descripcion,
     ubicacion:     p.ubicacion,
+    portada_url:   p.portadaUrl,
     activo:        p.activo,
     total_lotes:   p._count.lotes,
     created_at:    p.createdAt,
@@ -31,7 +32,9 @@ export async function getProyecto(id: number, empresaId: number) {
   if (!p) return null;
   return {
     id: p.id, empresa_id: p.empresaId, nombre: p.nombre,
-    descripcion: p.descripcion, ubicacion: p.ubicacion, activo: p.activo,
+    descripcion: p.descripcion, ubicacion: p.ubicacion,
+    portada_url: p.portadaUrl,
+    activo: p.activo,
     total_lotes: p._count.lotes,
     created_at: p.createdAt, updated_at: p.updatedAt,
   };
@@ -57,7 +60,7 @@ export async function limitesProyectos(empresaId: number): Promise<{
 
 export async function createProyecto(
   empresaId: number,
-  data: { nombre: string; descripcion?: string | null; ubicacion?: string | null },
+  data: { nombre: string; descripcion?: string | null; ubicacion?: string | null; portada_url?: string | null },
 ) {
   const nombre = data.nombre.trim();
   if (nombre.length < 2) throw new Error('El nombre del proyecto es muy corto');
@@ -76,6 +79,7 @@ export async function createProyecto(
       empresaId, nombre,
       descripcion: data.descripcion ?? null,
       ubicacion:   data.ubicacion   ?? null,
+      portadaUrl:  data.portada_url ?? null,
     },
   });
   return getProyecto(created.id, empresaId);
@@ -84,7 +88,7 @@ export async function createProyecto(
 export async function updateProyecto(
   id: number,
   empresaId: number,
-  data: Partial<{ nombre: string; descripcion: string | null; ubicacion: string | null; activo: boolean }>,
+  data: Partial<{ nombre: string; descripcion: string | null; ubicacion: string | null; portada_url: string | null; activo: boolean }>,
 ) {
   const p = await prisma.proyecto.findFirst({ where: { id, empresaId } });
   if (!p) return null;
@@ -97,6 +101,7 @@ export async function updateProyecto(
   }
   if (data.descripcion !== undefined) payload.descripcion = data.descripcion;
   if (data.ubicacion   !== undefined) payload.ubicacion   = data.ubicacion;
+  if (data.portada_url !== undefined) payload.portadaUrl  = data.portada_url;
   if (data.activo      !== undefined) payload.activo      = data.activo;
 
   if (Object.keys(payload).length === 0) return getProyecto(id, empresaId);
