@@ -101,18 +101,21 @@ export async function updateCredencialesUsuario(req: Request, res: Response) {
     if (!Number.isFinite(empresaId) || !Number.isFinite(usuarioId)) {
       return res.status(400).json({ success: false, message: 'ids inválidos' });
     }
-    const { username, password } = req.body ?? {};
-    if (username === undefined && password === undefined) {
-      return res.status(400).json({ success: false, message: 'Envía username o password' });
+    const { username, password, nombre, email } = req.body ?? {};
+    if (username === undefined && password === undefined && nombre === undefined && email === undefined) {
+      return res.status(400).json({ success: false, message: 'Envía al menos un campo a modificar' });
     }
-    const result = await EmpresasService.updateCredencialesUsuario(empresaId, usuarioId, { username, password });
+    const result = await EmpresasService.updateCredencialesUsuario(
+      empresaId, usuarioId, { username, password, nombre, email },
+    );
     if (!result) return res.status(404).json({ success: false, message: 'Usuario no encontrado en esta empresa' });
     return res.json({ success: true, data: result });
   } catch (err: any) {
     if (err?.code === 'P2002' || err?.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ success: false, message: 'El username ya está en uso por otro usuario' });
+      // P2002 puede venir por username OR email — el mensaje genérico cubre ambos casos.
+      return res.status(409).json({ success: false, message: 'El username o email ya está en uso por otro usuario' });
     }
-    if (err instanceof Error && (err.message.includes('username') || err.message.includes('contraseña'))) {
+    if (err instanceof Error && /username|contraseña|nombre|email/i.test(err.message)) {
       return res.status(400).json({ success: false, message: err.message });
     }
     console.error('[super-admin updateCredenciales]', err);

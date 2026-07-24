@@ -164,17 +164,18 @@ export async function listUsuariosDeEmpresa(empresaId: number) {
 }
 
 /**
- * Cambia username y/o contraseña de un usuario específico de una empresa.
- * Uso exclusivo super-admin (soporte cuando un cliente olvida credenciales).
+ * Actualiza credenciales y datos del perfil de un usuario específico de una
+ * empresa. Uso exclusivo super-admin (soporte cuando un cliente olvida sus
+ * datos o necesita corregir su cuenta).
  * - Valida que el usuario pertenezca a la empresa indicada (defensa en profundidad).
  * - Contraseña se hashea con bcrypt.
- * - Si username colisiona con otro usuario, lanza P2002 (el controller
- *   lo traduce a 409 amigable).
+ * - Si username o email colisionan con otro usuario, lanza P2002 (el
+ *   controller lo traduce a 409 amigable).
  */
 export async function updateCredencialesUsuario(
   empresaId: number,
   usuarioId: number,
-  data: { username?: string; password?: string },
+  data: { username?: string; password?: string; nombre?: string; email?: string },
 ) {
   const usuario = await prisma.usuario.findFirst({
     where:  { id: usuarioId, empresaId },
@@ -191,6 +192,17 @@ export async function updateCredencialesUsuario(
   if (data.password !== undefined) {
     if (data.password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
     payload.password = await bcrypt.hash(data.password, 10);
+  }
+  if (data.nombre !== undefined) {
+    const trimmed = data.nombre.trim();
+    if (trimmed.length < 2) throw new Error('El nombre debe tener al menos 2 caracteres');
+    payload.nombre = trimmed;
+  }
+  if (data.email !== undefined) {
+    const trimmed = data.email.trim().toLowerCase();
+    // Validación mínima — email debe tener @ y punto en la parte del dominio.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) throw new Error('Email inválido');
+    payload.email = trimmed;
   }
   if (Object.keys(payload).length === 0) return usuario;
 
