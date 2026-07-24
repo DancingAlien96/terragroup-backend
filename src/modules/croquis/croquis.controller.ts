@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import * as svc from './croquis.service.js';
+import { absolutizeUploadUrl } from '../../utils/files.js';
 
 export async function getPorProyecto(req: Request, res: Response) {
   try {
@@ -139,7 +140,17 @@ export async function getPublico(req: Request, res: Response) {
     const token = String(req.params.token ?? '');
     const data = await svc.getPublicoPorToken(token);
     if (!data) return res.status(404).json({ success: false, message: 'Croquis no disponible' });
-    return res.json({ success: true, data });
+    // Absolutiza URLs de uploads usando el host del request — evita que el
+    // frontend tenga que reconstruir la URL con env vars y sea sensible a
+    // reverse-proxy / mixed-content / typos.
+    return res.json({
+      success: true,
+      data: {
+        ...data,
+        imagen_url:           absolutizeUploadUrl(data.imagen_url,           req) ?? data.imagen_url,
+        proyecto_portada_url: absolutizeUploadUrl(data.proyecto_portada_url, req),
+      },
+    });
   } catch (err) {
     console.error('[croquis publico]', err);
     return res.status(500).json({ success: false, message: 'Error al obtener croquis público' });

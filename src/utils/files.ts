@@ -38,6 +38,28 @@ export function localFilename(url: string): string | null {
 }
 
 /**
+ * Convierte una URL de upload (`/uploads/xxx.webp`) en URL absoluta usando el
+ * host que llegó en el request. Usado por endpoints públicos (croquis) para
+ * evitar que el frontend tenga que armar el URL con NEXT_PUBLIC_API_URL —
+ * cualquier ambigüedad en configuración (mixed content, reverse proxy, etc.)
+ * se elimina porque el backend devuelve URLs listas para usar.
+ *
+ * Respeta X-Forwarded-Proto (via trust proxy en app.ts).
+ * Si la URL ya es absoluta (legacy UploadThing), pass-through.
+ */
+export function absolutizeUploadUrl(
+  url: string | null | undefined,
+  req: { protocol: string; get: (h: string) => string | undefined },
+): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  const host = req.get('host');
+  if (!host) return url;
+  const path = url.startsWith('/') ? url : `/${url}`;
+  return `${req.protocol}://${host}${path}`;
+}
+
+/**
  * Si la URL apunta a un archivo local, lo borra del disco.
  * No falla si el archivo ya no existe (puede haber sido eliminado manualmente).
  */
