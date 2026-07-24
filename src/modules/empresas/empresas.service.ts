@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import prisma from '../../config/prisma.js';
 import { Rol } from '../../generated/prisma/enums.js';
-import { createCheckout, type PlanSlug } from '../../config/recurrente.js';
+import { createCheckout, createCheckoutProyectoExtra, type PlanSlug } from '../../config/recurrente.js';
 
 export interface RegisterPayload {
   empresa_nombre: string;
@@ -330,6 +330,34 @@ export async function toggleEmpresa(id: number): Promise<void> {
 
 export async function updateEmpresaPlan(id: number, planId: number): Promise<void> {
   await prisma.empresa.update({ where: { id }, data: { planId } });
+}
+
+/**
+ * Self-service: el admin de una empresa activa compra un proyecto extra
+ * ($50/mes recurrente). Devuelve el checkout_url de Recurrente al que
+ * redirigir. El webhook se encarga de incrementar Empresa.proyectosExtra
+ * cuando el cobro se confirma (intent.succeeded con tipo=proyecto_extra).
+ */
+export async function iniciarCheckoutProyectoExtra(
+  empresaId: number,
+  usuarioId: number,
+): Promise<{ checkout_url: string } | { error: string; code: string }> {
+  const empresa = await prisma.empresa.findUnique({
+    where:  { id: empresaId },
+    select: { id: true, nombre: true, activo: true, estadoSuscripcion: true },
+  });
+  if (!empresa) return { error: 'Empresa no encontrada', code: 'NOT_FOUND' };
+  if (!empresa.activo) {
+    return {
+      error: 'Tu cuenta no está activa. Regulariza tu suscripción principal antes de comprar extras.',
+      code:  'EMPRESA_INACTIVA',
+    };
+  }
+
+  const { checkout_url } = await createCheckoutProyectoExtra({
+    empresaId, usuarioId, empresaNombre: empresa.nombre,
+  });
+  return { checkout_url };
 }
 
 /**

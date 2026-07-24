@@ -30,6 +30,8 @@ export interface CheckoutMetadata {
   empresa_id: string;
   usuario_id: string;
   plan?:      string;
+  /** Discrimina el tipo de compra en el webhook: 'plan' (default) vs 'proyecto_extra'. */
+  tipo?:      'plan' | 'proyecto_extra';
 }
 
 export interface CheckoutResponse {
@@ -101,6 +103,66 @@ export async function createCheckout(opts: {
     throw new Error(`Recurrente checkout error (${res.status}): ${errText}`);
   }
 
+  const json = (await res.json()) as CheckoutResponse;
+  if (!json.checkout_url) {
+    throw new Error('Recurrente devolvió respuesta sin checkout_url');
+  }
+  return json;
+}
+
+/**
+ * Crea checkout para el add-on "Proyecto extra" ($50/mes recurrente).
+ * A diferencia del plan principal, NO tiene trial — el cobro es inmediato
+ * y de ahí en adelante mensual. Cada compra genera una suscripción NUEVA
+ * en Recurrente independiente de la del plan.
+ *
+ * El webhook discrimina esta compra por metadata.tipo='proyecto_extra' y
+ * al recibir intent.succeeded incrementa Empresa.proyectosExtra en +1.
+ */
+export async function createCheckoutProyectoExtra(opts: {
+  empresaId:     number;
+  usuarioId:     number;
+  empresaNombre: string;
+}): Promise<CheckoutResponse> {
+  if (!RECURRENTE_SECRET_KEY) {
+    throw new Error('RECURRENTE_SECRET_KEY no está configurada');
+  }
+
+  const metadata: CheckoutMetadata = {
+    empresa_id: String(opts.empresaId),
+    usuario_id: String(opts.usuarioId),
+    tipo:       'proyecto_extra',
+  };
+
+  const body = {
+    items: [{
+      name:                   `TerraGroup — Proyecto extra · ${opts.empresaNombre}`,
+      amount_in_cents:        PRECIO_EXTRA_PROYECTO_CENTS,
+      currency:               RECURRENTE_CURRENCY,
+      quantity:               1,
+      charge_type:            'recurring' as const,
+      billing_interval:       'month'     as const,
+      billing_interval_count: 1,
+      // Sin trial — el cliente ya es cliente activo del SaaS.
+    }],
+    success_url: `${FRONTEND_URL}/dashboard/proyectos?extra=exito`,
+    cancel_url:  `${FRONTEND_URL}/dashboard/proyectos?extra=cancelado`,
+    metadata,
+  };
+
+  const res = await fetch(`${RECURRENTE_API_URL}/checkouts`, {
+    method:  'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-SECRET-KEY': RECURRENTE_SECRET_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Recurrente checkout error (${res.status}): ${errText}`);
+  }
   const json = (await res.json()) as CheckoutResponse;
   if (!json.checkout_url) {
     throw new Error('Recurrente devolvió respuesta sin checkout_url');

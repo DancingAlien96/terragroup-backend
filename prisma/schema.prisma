@@ -122,6 +122,7 @@ model Empresa {
   usuarios        Usuario[]
   proyectos       Proyecto[]
   croquis         Croquis[]
+  extraCompras    EmpresaExtraCompra[]
   lotes           Lote[]
   propietarios    Propietario[]
   vendedores      Vendedor[]
@@ -156,6 +157,22 @@ model Usuario {
 
   @@index([empresaId])
   @@map("usuarios")
+}
+
+// Cada compra self-service de proyecto extra ($50/mes) queda registrada
+// por su intent.id de Recurrente para garantizar idempotencia: si el
+// webhook llega dos veces, el UNIQUE en intent_id bloquea el segundo
+// insert y `proyectos_extra` no se incrementa dos veces.
+model EmpresaExtraCompra {
+  id         Int      @id @default(autoincrement())
+  empresaId  Int      @map("empresa_id")
+  intentId   String   @unique @map("intent_id") @db.VarChar(100)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@index([empresaId])
+  @@map("empresa_extra_compras")
 }
 
 // Un terreno grande dividido en lotes (lotificación). El plan de la empresa

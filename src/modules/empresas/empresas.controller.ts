@@ -63,6 +63,33 @@ export async function getMiSuscripcion(req: Request, res: Response) {
   }
 }
 
+/**
+ * Self-service: el admin compra un proyecto extra ($50/mes). Devuelve el
+ * checkout_url para redirigir el navegador. El webhook incrementa
+ * proyectosExtra cuando el cobro llega.
+ */
+export async function comprarProyectoExtra(req: Request, res: Response) {
+  try {
+    const empresaId = req.user?.empresaId;
+    const usuarioId = req.user?.id;
+    if (!empresaId || !usuarioId) return res.status(401).json({ success: false, message: 'No autorizado' });
+    // Solo admin puede comprar extras (el vendedor/supervisor no)
+    if (req.user?.rol !== 'admin' && req.user?.rol !== 'superadmin') {
+      return res.status(403).json({ success: false, message: 'Solo el administrador de la empresa puede comprar proyectos extra' });
+    }
+    const result = await EmpresasService.iniciarCheckoutProyectoExtra(empresaId, usuarioId);
+    if ('error' in result) {
+      return res.status(result.code === 'NOT_FOUND' ? 404 : 400).json({
+        success: false, code: result.code, message: result.error,
+      });
+    }
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('[comprarProyectoExtra]', err);
+    return res.status(500).json({ success: false, message: 'Error al iniciar el pago del proyecto extra' });
+  }
+}
+
 /** Cancelar la suscripción de la empresa logueada (solo durante trial). */
 export async function cancelarMiSuscripcion(req: Request, res: Response) {
   try {

@@ -30,6 +30,8 @@ const WEBHOOK_SECRET = process.env.RECURRENTE_WEBHOOK_SECRET ?? '';
 interface RecurrenteMetadata {
   empresa_id?: string;
   usuario_id?: string;
+  /** 'plan' (default legacy) o 'proyecto_extra' — discrimina el flujo. */
+  tipo?:       string;
 }
 
 interface RecurrenteWebhookPayload {
@@ -87,6 +89,18 @@ export async function recurrenteWebhook(req: Request, res: Response): Promise<vo
   const metadata = extractMetadata(payload);
   const empresaIdStr = metadata.empresa_id;
   const empresaId    = empresaIdStr ? Number(empresaIdStr) : NaN;
+
+  // Add-on de proyecto extra: intent.succeeded incrementa el contador y
+  // NO toca estado de la suscripción principal. setup_intent y demás se
+  // ignoran silenciosamente porque no aplican al add-on.
+  if (metadata.tipo === 'proyecto_extra') {
+    if (eventType === 'intent.succeeded') {
+      await handleProyectoExtraSucceeded(empresaId, payload, res);
+      return;
+    }
+    res.json({ ok: true, skipped: `proyecto_extra ${eventType}` });
+    return;
+  }
 
   // Despachador por tipo de evento.
   switch (eventType) {
@@ -231,6 +245,59 @@ async function handleIntentFailed(
   });
   console.log(`[webhook-recurrente] Empresa "${empresa.nombre}" (id=${empresaId}) en pago_fallido (Recurrente reintentará)`);
   res.json({ ok: true, payment_failed: true });
+}
+
+/**
+ * Cobro exitoso de un add-on "proyecto extra": inserta el intent.id en
+ * empresa_extra_compras (UNIQUE) — si ya existía, es reintento del webhook
+ * y no incrementamos otra vez. Si es nuevo, aumentamos proyectosExtra en +1.
+ *
+ * Nota: cada renovación mensual del add-on también dispara intent.succeeded
+ * con un intent.id NUEVO — cada mes se "incrementaría" de nuevo. Esto NO
+ * es lo que queremos (el cliente pagó por el mismo slot). Para diferenciar
+ * COMPRA NUEVA de RENOVACIÓN, Recurrente incluye subscription.id: la
+ * primera vez para esa subscription.id, es una compra nueva; posteriores
+ * son renovaciones. Idempotencia por (subscription_id) NO por (intent_id).
+ */
+async function handleProyectoExtraSucceeded(
+  empresaId: number,
+  payload: RecurrenteWebhookPayload,
+  res: Response,
+) {
+  if (!Number.isFinite(empresaId)) {
+    res.json({ ok: true, skipped: 'missing empresa_id' });
+    return;
+  }
+  // Usamos subscription.id como clave de idempotencia — la primera vez que
+  // vemos esa subscription es la compra; renovaciones futuras vienen con la
+  // misma subscription.id y ya existen en la tabla.
+  const suscripcionId = payload.subscription?.id ?? payload.id;
+  if (!suscripcionId) {
+    res.json({ ok: true, skipped: 'missing subscription id' });
+    return;
+  }
+
+  try {
+    await prisma.empresaExtraCompra.create({
+      data: { empresaId, intentId: suscripcionId },
+    });
+  } catch (err: any) {
+    // P2002 = unique violation → ya lo procesamos (renovación o retry)
+    if (err?.code === 'P2002') {
+      console.log(`[webhook-recurrente] proyecto_extra ${suscripcionId} ya contabilizado (renovación o retry)`);
+      res.json({ ok: true, already_counted: true });
+      return;
+    }
+    throw err;
+  }
+
+  const empresa = await prisma.empresa.update({
+    where: { id: empresaId },
+    data:  { proyectosExtra: { increment: 1 } },
+    select: { nombre: true, proyectosExtra: true },
+  });
+  console.log(`[webhook-recurrente] Empresa "${empresa.nombre}" (id=${empresaId}) +1 proyecto extra → ${empresa.proyectosExtra} total`);
+  res.json({ ok: true, extra_added: true, total: empresa.proyectosExtra });
 }
 
 async function handleSubscriptionCanceled(

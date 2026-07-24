@@ -14,7 +14,8 @@ router.get('/:id/estado', ctrl.getEstadoEmpresa);
 
 // Empresa logueada: ver y cancelar su propia suscripción.
 router.get('/mi-suscripcion',            authMiddleware, ctrl.getMiSuscripcion);
-router.post('/mi-suscripcion/cancelar',  authMiddleware, ctrl.cancelarMiSuscripcion);
+router.post('/mi-suscripcion/cancelar',       authMiddleware, ctrl.cancelarMiSuscripcion);
+router.post('/mi-suscripcion/proyecto-extra', authMiddleware, ctrl.comprarProyectoExtra);
 
 // Solo super-admin
 router.get('/',              authMiddleware, superadminMiddleware, ctrl.listEmpresas);
