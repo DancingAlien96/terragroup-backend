@@ -15,6 +15,9 @@ export interface UserWithPlan {
   secciones_permitidas: string | null;
   estado_suscripcion: string;     // 'trial' | 'pagada' | 'pago_fallido' | 'cancelada' | 'pendiente'
   trial_fin: Date | null;
+  // Gate del add-on de croquis (mapa con pins). Se controla desde el panel
+  // super-admin — el frontend lo usa para mostrar/ocultar la entrada al editor.
+  tiene_croquis: boolean;
 }
 
 export function findUserByUsername(username: string) {
@@ -39,6 +42,7 @@ export async function getUserWithPlan(userId: number): Promise<UserWithPlan | nu
     secciones_permitidas: u.seccionesPermitidas,
     estado_suscripcion:   u.empresa.estadoSuscripcion,
     trial_fin:            u.empresa.trialFin,
+    tiene_croquis:        u.empresa.tieneCroquis,
   };
 }
 

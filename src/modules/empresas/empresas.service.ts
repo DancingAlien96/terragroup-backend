@@ -142,6 +142,7 @@ async function empresaWithStats(empresaId: number) {
     fecha_inicio:        e.fechaInicio,
     fecha_vence:         e.fechaVence,
     pago_suscripcion_id: e.pagoSuscripcionId,    // para distinguir pagadas vs activas-manualmente
+    tiene_croquis:       e.tieneCroquis,
     created_at:          e.createdAt,
     total_usuarios:      totalUsuarios,
     total_lotes:         totalLotes,
@@ -329,6 +330,20 @@ export async function toggleEmpresa(id: number): Promise<void> {
 
 export async function updateEmpresaPlan(id: number, planId: number): Promise<void> {
   await prisma.empresa.update({ where: { id }, data: { planId } });
+}
+
+/**
+ * Súper-admin: activa/desactiva el add-on de croquis para una empresa.
+ * Fallback manual cuando el pago del add-on falla o hay un acuerdo por fuera.
+ */
+export async function toggleCroquisEmpresa(
+  id: number,
+  activo: boolean,
+): Promise<{ tiene_croquis: boolean } | null> {
+  const exists = await prisma.empresa.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) return null;
+  await prisma.empresa.update({ where: { id }, data: { tieneCroquis: activo } });
+  return { tiene_croquis: activo };
 }
 
 export async function updateEmpresa(

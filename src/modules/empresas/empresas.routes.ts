@@ -23,6 +23,7 @@ router.get('/:id',           authMiddleware, superadminMiddleware, ctrl.getEmpre
 router.put('/:id',           authMiddleware, superadminMiddleware, ctrl.updateEmpresa);
 router.patch('/:id/toggle',  authMiddleware, superadminMiddleware, ctrl.toggleEmpresa);
 router.patch('/:id/plan',    authMiddleware, superadminMiddleware, ctrl.updateEmpresaPlan);
+router.patch('/:id/croquis', authMiddleware, superadminMiddleware, ctrl.toggleCroquisEmpresa);
 // Súper-admin: soporte de credenciales (list + reset username/password) por empresa.
 router.get('/:id/usuarios',                          authMiddleware, superadminMiddleware, ctrl.listUsuariosEmpresa);
 router.patch('/:id/usuarios/:usuarioId/credenciales', authMiddleware, superadminMiddleware, ctrl.updateCredencialesUsuario);

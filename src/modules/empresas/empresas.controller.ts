@@ -171,6 +171,23 @@ export async function toggleEmpresa(req: Request, res: Response) {
   }
 }
 
+export async function toggleCroquisEmpresa(req: Request, res: Response) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ success: false, message: 'id inválido' });
+    const activo = req.body?.activo;
+    if (typeof activo !== 'boolean') {
+      return res.status(400).json({ success: false, message: '`activo` debe ser boolean' });
+    }
+    const result = await EmpresasService.toggleCroquisEmpresa(id, activo);
+    if (!result) return res.status(404).json({ success: false, message: 'Empresa no encontrada' });
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('[super-admin toggleCroquis]', err);
+    return res.status(500).json({ success: false, message: 'Error al actualizar croquis' });
+  }
+}
+
 export async function updateEmpresaPlan(req: Request, res: Response) {
   const { plan_id } = req.body;
   if (!plan_id) return res.status(400).json({ success: false, message: 'plan_id requerido' });

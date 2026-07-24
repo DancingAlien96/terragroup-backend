@@ -107,6 +107,11 @@ model Empresa {
   trialFin            DateTime?          @map("trial_fin")
   // Proyectos extra sobre el máximo del plan. Cada uno cuesta $50/mes en Recurrente.
   proyectosExtra      Int                @default(0) @map("proyectos_extra")
+  // Feature del croquis (mapa interactivo con pins). Se activa manualmente
+  // desde el panel super-admin o vía webhook cuando el add-on esté pagado.
+  // Sirve como fallback cuando el pago falla o para clientes con acuerdos
+  // fuera de Recurrente.
+  tieneCroquis        Boolean            @default(false) @map("tiene_croquis")
   // Momento exacto en que el admin aceptó los términos y la política de
   // privacidad durante el registro. Evidencia legal de consentimiento.
   aceptoTerminosEn    DateTime?          @map("acepto_terminos_en")
