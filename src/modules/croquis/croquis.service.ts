@@ -266,14 +266,17 @@ export async function getPublicoPorToken(token: string) {
   if (!c || !c.publicoActivo) return null;
 
   return {
-    empresa_nombre:    c.empresa.nombre,
-    proyecto_nombre:   c.proyecto.nombre,
-    proyecto_ubicacion: c.proyecto.ubicacion,
-    imagen_url:        c.imagenUrl,
-    imagen_ancho:      c.imagenAncho,
-    imagen_alto:       c.imagenAlto,
-    contacto_whatsapp: c.contactoWhatsapp,
-    contacto_email:    c.contactoEmail,
+    empresa_nombre:      c.empresa.nombre,
+    proyecto_nombre:     c.proyecto.nombre,
+    proyecto_ubicacion:  c.proyecto.ubicacion,
+    // Portada del proyecto — usada como og:image para previews de link
+    // (WhatsApp, Twitter/X, Facebook). Fallback al plano del croquis.
+    proyecto_portada_url: c.proyecto.portadaUrl,
+    imagen_url:          c.imagenUrl,
+    imagen_ancho:        c.imagenAncho,
+    imagen_alto:         c.imagenAlto,
+    contacto_whatsapp:   c.contactoWhatsapp,
+    contacto_email:      c.contactoEmail,
     lotes: c.proyecto.lotes.map((l) => ({
       id:            l.id,
       clave:         l.clave,
